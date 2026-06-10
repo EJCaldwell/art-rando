@@ -181,32 +181,27 @@ class Wheel {
     const firstY = -(norm % ih);
 
     // ── Draw item cards ───────────────────────────────────────────────────
-    // We draw one extra row above (-1) and one below (VISIBLE_ROWS) the
-    // visible area so there's no gap during fast scrolling.
+    // Cards fill their full slot with no padding so there is no gap between them.
     for (let row = -1; row <= VISIBLE_ROWS + 1; row++) {
       const itemIndex = ((firstIdx + row) % itemCount + itemCount) % itemCount;
       const y = firstY + row * ih;
-
-      // Skip rows that are fully outside the canvas bounds.
       if (y + ih <= 0 || y >= h) continue;
 
-      // A row is the "center" (selected) row when its vertical midpoint
-      // falls within half an item-height of the canvas midpoint.
-      const rowMidY  = y + ih / 2;
-      const isCenter = Math.abs(rowMidY - h / 2) < ih / 2;
+      const rowMidY        = y + ih / 2;
+      const distFromCenter = Math.abs(rowMidY - h / 2) / ih;
+      const isCenter       = distFromCenter < 0.5;
+      const alpha          = distFromCenter < 0.5 ? 1.0 : distFromCenter < 1.5 ? 0.75 : 0.45;
 
       const color = grayed
         ? GRAYED_PALETTE[itemIndex % GRAYED_PALETTE.length]
         : PALETTE[itemIndex % PALETTE.length];
 
-      // Dim non-center rows to draw attention to the selected item.
-      ctx.globalAlpha = isCenter ? 1.0 : 0.3;
+      ctx.globalAlpha = alpha;
       ctx.fillStyle   = color;
-      this._roundRect(ctx, 6, y + 3, w - 12, ih - 6, 10);
+      this._roundRect(ctx, 6, y, w - 12, ih, 10);
       ctx.fill();
 
-      // Draw the label text, sized to fit within the card width.
-      ctx.globalAlpha    = isCenter ? 1.0 : 0.45;
+      ctx.globalAlpha    = alpha;
       ctx.textAlign      = 'center';
       ctx.textBaseline   = 'middle';
       ctx.fillStyle      = '#ffffff';
@@ -218,7 +213,6 @@ class Wheel {
       let fontSize   = isCenter ? 17 : 13;
       ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
 
-      // Reduce font size until the label fits in the card.
       while (ctx.measureText(label).width > maxWidth && fontSize > 8) {
         fontSize--;
         ctx.font = `bold ${fontSize}px system-ui, sans-serif`;

@@ -782,9 +782,10 @@ main {
   background: transparent;
   color: var(--text-muted);
   border: 1px solid var(--border);
-  font-size: 0.82rem;
-  padding: 0.45rem 1.4rem;
+  font-size: 1.1rem;
+  padding: 0.75rem 2.8rem;
   letter-spacing: 0.05em;
+  margin-top: 1.2rem;
 }
 
 .btn--gallery:not(:disabled):hover {
@@ -1179,6 +1180,39 @@ main {
   color: var(--border);
   font-size: 0.75rem;
   user-select: none;
+}
+
+/* ── Easter eggs ─────────────────────────────────────────────────────────── */
+
+@keyframes easter-spin-cw  { to { transform: rotate(360deg);  } }
+@keyframes easter-spin-ccw { to { transform: rotate(-360deg); } }
+
+.easter-spinning[data-easter-spin="cw"]  { animation: easter-spin-cw  3s linear infinite; transform-origin: center center; }
+.easter-spinning[data-easter-spin="ccw"] { animation: easter-spin-ccw 3s linear infinite; transform-origin: center center; }
+
+/* Notification toast shown when an easter egg activates / deactivates */
+.easter-toast {
+  position: fixed;
+  top: 5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  background: rgba(10, 10, 20, 0.92);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.55rem 1.6rem;
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.easter-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
