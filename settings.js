@@ -24,7 +24,7 @@ function openSettings(onDone) {
   // keys that may be absent (e.g. on first visit or from an older cookie).
   const initialData = loadData(); // from editor.js
   const prefs = Object.assign(
-    { showFormWheel: false, spinDuration: 4000, spinMinCycles: 2 },
+    { showCategoryWheel: true, showMediumWheel: true, showFormWheel: false, showSubjectWheel: true, spinDuration: 4000, spinMinCycles: 2 },
     initialData._prefs || {}
   );
 
@@ -107,41 +107,49 @@ function openSettings(onDone) {
   }
 
   // ── Wheel Options ──────────────────────────────────────────────────────────────
-  // A single checkbox to show or hide the Form wheel in the spin sequence.
+  // One toggle per wheel — controls which wheels appear in the spin sequence.
   function buildWheelOptions() {
     const wrap = document.createElement('div');
     wrap.className = 'settings-controls';
 
-    // The <label> acts as the click target for the whole row (checkbox + text).
-    const row = document.createElement('label');
-    row.className = 'settings-toggle-row';
+    const wheels = [
+      { key: 'showCategoryWheel', label: 'Show Category wheel', desc: 'Picks the art discipline (Drawing, Painting, etc.). If off, a category is chosen randomly.' },
+      { key: 'showMediumWheel',   label: 'Show Medium wheel',   desc: 'Picks the material or tool for the chosen category.' },
+      { key: 'showFormWheel',     label: 'Show Form wheel',     desc: 'Optional wheel for artistic approach — Sketch, Study, Finished Piece, etc. You can still skip it each run.' },
+      { key: 'showSubjectWheel',  label: 'Show Subject wheel',  desc: 'Picks what to depict (Portrait, Landscape, etc.).' },
+    ];
 
-    const checkbox = document.createElement('input');
-    checkbox.type      = 'checkbox';
-    checkbox.className = 'settings-checkbox';
-    checkbox.checked   = prefs.showFormWheel;
-    checkbox.addEventListener('change', () => {
-      prefs.showFormWheel = checkbox.checked;
-      persistPrefs();
+    wheels.forEach(({ key, label, desc }) => {
+      const row = document.createElement('label');
+      row.className = 'settings-toggle-row';
+
+      const checkbox = document.createElement('input');
+      checkbox.type      = 'checkbox';
+      checkbox.className = 'settings-checkbox';
+      checkbox.checked   = prefs[key];
+      checkbox.addEventListener('change', () => {
+        prefs[key] = checkbox.checked;
+        persistPrefs();
+      });
+
+      const textWrap = document.createElement('div');
+      textWrap.className = 'settings-toggle-text';
+
+      const labelSpan = document.createElement('span');
+      labelSpan.className   = 'settings-toggle-label';
+      labelSpan.textContent = label;
+
+      const descSpan = document.createElement('span');
+      descSpan.className   = 'settings-toggle-desc';
+      descSpan.textContent = desc;
+
+      textWrap.appendChild(labelSpan);
+      textWrap.appendChild(descSpan);
+      row.appendChild(checkbox);
+      row.appendChild(textWrap);
+      wrap.appendChild(row);
     });
 
-    const textWrap = document.createElement('div');
-    textWrap.className = 'settings-toggle-text';
-
-    const labelSpan = document.createElement('span');
-    labelSpan.className   = 'settings-toggle-label';
-    labelSpan.textContent = 'Show Form wheel';
-
-    const descSpan = document.createElement('span');
-    descSpan.className   = 'settings-toggle-desc';
-    // Explain what the form wheel is and that it can still be skipped per-run.
-    descSpan.textContent = 'Adds an optional 3rd wheel for artistic approach — Sketch, Study, Finished Piece, etc. You can still skip it each run when it\'s enabled.';
-
-    textWrap.appendChild(labelSpan);
-    textWrap.appendChild(descSpan);
-    row.appendChild(checkbox);
-    row.appendChild(textWrap);
-    wrap.appendChild(row);
     return wrap;
   }
 

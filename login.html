@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>art-rando — Sign In</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="login-page">
+
+  <main class="login-main">
+    <div class="login-card">
+
+      <!-- App wordmark -->
+      <p class="login-wordmark">art-rando</p>
+      <p class="login-subtitle">Your creative community</p>
+
+      <!-- Tab switcher: Sign In / Create Account -->
+      <div class="login-tabs">
+        <button id="tab-signin"   class="login-tab login-tab--active">Sign In</button>
+        <button id="tab-register" class="login-tab">Create Account</button>
+      </div>
+
+      <!-- ── Sign-in form ─────────────────────────────────────────────────── -->
+      <form id="signin-form" class="login-form" novalidate>
+
+        <div class="login-field">
+          <label for="si-email" class="login-label">Email</label>
+          <input
+            id="si-email"
+            name="email"
+            type="email"
+            class="login-input"
+            autocomplete="email"
+            placeholder="you@example.com"
+            required
+          />
+        </div>
+
+        <div class="login-field">
+          <label for="si-password" class="login-label">Password</label>
+          <input
+            id="si-password"
+            name="password"
+            type="password"
+            class="login-input"
+            autocomplete="current-password"
+            placeholder="••••••"
+            required
+          />
+        </div>
+
+        <p id="signin-error" class="login-error hidden"></p>
+
+        <button type="submit" class="btn btn--spin login-submit">Sign In</button>
+
+      </form>
+
+      <!-- ── Register form (hidden by default) ────────────────────────────── -->
+      <form id="register-form" class="login-form hidden" novalidate>
+
+        <div class="login-field">
+          <label for="reg-email" class="login-label">Email</label>
+          <input
+            id="reg-email"
+            name="email"
+            type="email"
+            class="login-input"
+            autocomplete="email"
+            placeholder="you@example.com"
+            required
+          />
+        </div>
+
+        <div class="login-field">
+          <label for="reg-username" class="login-label">Username</label>
+          <input
+            id="reg-username"
+            name="username"
+            type="text"
+            class="login-input"
+            autocomplete="username"
+            placeholder="artist123"
+            required
+          />
+        </div>
+
+        <div class="login-field">
+          <label for="reg-password" class="login-label">Password</label>
+          <input
+            id="reg-password"
+            name="password"
+            type="password"
+            class="login-input"
+            autocomplete="new-password"
+            placeholder="at least 6 characters"
+            required
+          />
+        </div>
+
+        <p id="register-error" class="login-error hidden"></p>
+
+        <button type="submit" class="btn btn--spin login-submit">Create Account</button>
+
+      </form>
+
+      <!-- Back link -->
+      <p class="login-back">
+        <a href="index.html" class="login-back-link">← Back without signing in</a>
+      </p>
+
+    </div>
+  </main>
+
+  <!-- Supabase CDN must load first so _sb is available to auth.js and login.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="supabase.js"></script>
+  <script src="auth.js"></script>
+  <script src="login.js"></script>
+
+</body>
+</html>

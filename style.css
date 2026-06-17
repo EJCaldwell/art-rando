@@ -24,7 +24,11 @@ html {
 }
 
 body {
-  background: linear-gradient(135deg, #252558 0%, #1a1a2e 15%, #1c1030 60%, #2a0a10 100%);
+  /* Oversized gradient so background-position can slide through multiple hues */
+  /* Last stop matches first so the infinite loop resets invisibly */
+  background: linear-gradient(135deg, #252558, #1a1a2e, #1c1030, #2a0a10, #1a1a2e, #252558);
+  background-size: 400% 400%;
+  animation: bg-slide 32s linear infinite;
   color: var(--text);
   font-family: system-ui, -apple-system, sans-serif;
   height: 100vh;
@@ -33,6 +37,11 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center; /* vertically center the wheel stage */
+}
+
+@keyframes bg-slide {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -397,6 +406,14 @@ main {
 
 .modal-overlay.modal--visible .modal-card {
   transform: translateY(0) scale(1);
+}
+
+/* Gallery modal takes up 80% of the viewport in both directions */
+.modal-card--gallery {
+  width: 80vw;
+  height: 80vh;
+  max-width: 80vw;
+  max-height: 80vh;
 }
 
 .modal-header {
@@ -980,30 +997,311 @@ main {
   line-height: 1.5;
 }
 
-/* ── Gallery WIP modal ───────────────────────────────────────────────────── */
-.gallery-wip-body {
+/* ── Gallery modal ───────────────────────────────────────────────────────── */
+
+/* Make the gallery body scrollable so the grid doesn't overflow the modal */
+.gallery-body {
+  padding: 1rem 1.25rem !important;
+}
+
+/* Header right section: user label + sign-out + close X */
+.gallery-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Signed-in username displayed in the modal header */
+.gallery-user-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Sign-out button — reuses .btn--reset-defaults sizing but slightly tighter */
+.gallery-signout-btn {
+  font-size: 0.75rem !important;
+  padding: 0.3rem 0.75rem !important;
+}
+
+/* Footer entry count text */
+.gallery-count {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ── Shared centred-state layout (auth gate + empty state) ─────────────── */
+.gallery-auth-prompt,
+.gallery-empty {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 2.5rem 1.5rem !important;
-  gap: 0.75rem !important;
+  padding: 2.5rem 1.5rem;
+  gap: 0.75rem;
+  flex: 1;
 }
 
-.gallery-wip-icon {
-  font-size: 3rem;
+/* Large emoji icon above the heading */
+.gallery-state-icon {
+  font-size: 2.8rem;
   line-height: 1;
 }
 
-.gallery-wip-heading {
-  font-size: 1.2rem;
+.gallery-state-heading {
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--text);
 }
 
-.gallery-wip-desc {
-  font-size: 0.9rem;
+.gallery-state-desc {
+  font-size: 0.88rem;
   color: var(--text-muted);
+  line-height: 1.55;
+  max-width: 320px;
+}
+
+/* Sign-in button inside the auth gate */
+.gallery-auth-btn {
+  margin-top: 0.5rem;
+  font-size: 1rem !important;
+  padding: 0.65rem 2.5rem !important;
+  text-decoration: none;
+  display: inline-block;
+}
+
+/* ── Gallery grid ────────────────────────────────────────────────────────── */
+/* Two columns on wider modals, single column on narrow viewports */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem;
+  width: 100%;
+  padding-bottom: 0.25rem;
+}
+
+/* Individual saved-prompt card */
+.gallery-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem 2rem 0.9rem 1rem; /* right padding leaves room for delete btn */
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  transition: border-color 0.18s;
+}
+
+.gallery-card:hover { border-color: var(--accent-teal); }
+
+/* Small muted date stamp at the top of each card */
+.gallery-card-date {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+/* The full prompt text inside the card */
+.gallery-card-prompt {
+  font-size: 0.88rem;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+/* Keyword highlight colours inside gallery cards — mirrors the results sheet */
+.gc-subject { color: var(--accent-teal);   font-weight: 700; }
+.gc-form    { color: var(--accent-purple); font-weight: 700; }
+.gc-medium  { color: var(--accent);        font-weight: 700; }
+.gc-cat     { color: var(--text-muted);    font-size: 0.82em; }
+
+/* Absolute-positioned delete button in the top-right corner of each card */
+.gallery-card-delete {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.55rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.gallery-card-delete:hover {
+  color: var(--accent);
+  background: rgba(233, 69, 96, 0.1);
+}
+
+/* ── Save to Gallery button (results sheet) ──────────────────────────────── */
+.btn--save-gallery {
+  background: transparent;
+  color: var(--accent-teal);
+  border: 1px solid var(--accent-teal);
+  font-size: 0.95rem;
+  padding: 0.75rem 1.75rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn--save-gallery:not(:disabled):hover {
+  background: rgba(42, 157, 143, 0.15);
+  box-shadow: none;
+}
+
+/* ── Login page ──────────────────────────────────────────────────────────── */
+
+/* Body class applied by login.html so these rules only target that page */
+body.login-page {
+  justify-content: center;
+  align-items: center;
+}
+
+/* Centred single-column layout */
+.login-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 1.5rem;
+}
+
+/* The login form card */
+.login-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 380px;
+  padding: 2rem 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* App name at the top of the card */
+.login-wordmark {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.3rem;
+}
+
+.login-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
   line-height: 1.5;
+  margin-bottom: 1.75rem;
+}
+
+/* The <form> element */
+.login-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Label + input stacked vertically */
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.login-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+/* Reuses the editor-input aesthetic */
+.login-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 1rem;
+  padding: 0.65rem 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+.login-input:focus { border-color: var(--accent); }
+
+/* Inline error message — toggled by login.js */
+.login-error {
+  font-size: 0.82rem;
+  color: var(--accent);
+  text-align: center;
+  line-height: 1.4;
+  margin-top: -0.25rem;
+}
+
+/* Full-width submit button */
+.login-submit {
+  width: 100%;
+  margin-top: 0.25rem;
+  font-size: 1rem !important;
+  padding: 0.75rem !important;
+  text-align: center;
+}
+
+/* "Back without signing in" link below the form */
+.login-back {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+}
+
+.login-back-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.login-back-link:hover { color: var(--text); }
+
+/* Demo credentials notice — remove in production */
+.login-demo-note {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+  padding: 0.6rem 0.9rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  width: 100%;
+}
+
+/* "Demo" badge pill */
+.login-demo-badge {
+  flex-shrink: 0;
+  background: rgba(233, 69, 96, 0.2);
+  color: var(--accent);
+  border: 1px solid rgba(233, 69, 96, 0.4);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.15rem 0.55rem;
+}
+
+.login-demo-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 
 /* ── Help modal content ──────────────────────────────────────────────────── */
@@ -1125,6 +1423,43 @@ main {
   line-height: 1.55;
 }
 
+/* School project disclaimer — sits at the bottom of the help modal body */
+.help-school-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  text-align: center;
+  padding: 0.6rem 0.5rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+
+/* Bug report textarea */
+.bug-report-textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-family: inherit;
+  padding: 0.7rem 0.9rem;
+  outline: none;
+  resize: vertical;
+  line-height: 1.5;
+  transition: border-color 0.15s;
+}
+
+.bug-report-textarea:focus { border-color: var(--accent); }
+
+/* Confirmation message shown after the mailto link fires */
+.bug-report-confirm {
+  font-size: 0.85rem;
+  color: var(--accent-teal);
+  font-weight: 600;
+  text-align: center;
+}
+
 /* Settings tip at the bottom of the body */
 .help-tip {
   font-size: 0.82rem;
@@ -1213,6 +1548,337 @@ main {
 .easter-toast--visible {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+/* ── Login page tabs (Sign In / Create Account) ──────────────────────────── */
+.login-tabs {
+  display: flex;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.login-tab {
+  flex: 1;
+  padding: 0.6rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.login-tab--active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── Gallery tabs (Public Gallery / My Uploads) ───────────────────────────── */
+.gallery-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem;
+  flex-shrink: 0;
+}
+
+.gallery-tab {
+  background: transparent;
+  border: none;
+  /* Underline indicator — transparent until active */
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  margin-bottom: -1px;    /* overlap the parent's bottom border */
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.gallery-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Gallery image grid ───────────────────────────────────────────────────── */
+.gallery-img-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.gallery-img-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.18s;
+}
+
+.gallery-img-card:hover { border-color: var(--accent-teal); }
+
+/* Square thumbnail that covers the card top */
+.gallery-img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+}
+
+.gallery-img-caption {
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.gallery-img-prompt {
+  font-size: 0.78rem;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.gallery-img-meta {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+/* ── Status badges (Pending / Approved / Rejected) ────────────────────────── */
+.gallery-status-badge {
+  display: inline-block;
+  font-size: 0.63rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.gallery-status-badge--pending {
+  background: rgba(233, 182, 69, 0.15);
+  color: #e8b84b;
+  border: 1px solid rgba(233, 182, 69, 0.4);
+}
+
+.gallery-status-badge--approved {
+  background: rgba(42, 157, 143, 0.15);
+  color: var(--accent-teal);
+  border: 1px solid var(--accent-teal);
+}
+
+.gallery-status-badge--rejected {
+  background: rgba(233, 69, 96, 0.12);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+/* ── Gallery loading / error text ─────────────────────────────────────────── */
+.gallery-loading {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.gallery-error {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+/* ── Gallery prompt chips (color-coded wheel results on each card) ────────── */
+/* Colors mirror the chosen-chip palette from the main spinning UI */
+.gallery-prompt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.15rem;
+}
+
+/* Base chip: small pill matching the chosen-chip style */
+.gpc {
+  font-size: 0.63rem;
+  font-weight: 700;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Subject — teal (matches hl--subject) */
+.gpc--sub {
+  background: rgba(42, 157, 143, 0.15);
+  color: #6ee7dc;
+  border-color: var(--accent-teal);
+}
+
+/* Medium — red/pink (matches hl--medium) */
+.gpc--med {
+  background: rgba(233, 69, 96, 0.12);
+  color: #ff9aaa;
+  border-color: var(--accent);
+}
+
+/* Category — blue (matches chosen-chip--category) */
+.gpc--cat {
+  background: rgba(69, 123, 157, 0.15);
+  color: #a8dadc;
+  border-color: var(--accent-blue);
+}
+
+/* Form — purple (matches chosen-chip--form) */
+.gpc--form {
+  background: rgba(131, 56, 236, 0.12);
+  color: #c4a0ff;
+  border-color: var(--accent-purple);
+}
+
+/* ── My Uploads — upload button row at the top ────────────────────────────── */
+.gallery-upload-row {
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+
+/* ── Gallery upload modal — editable prompt fields ────────────────────────── */
+.gup-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.gup-field {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+/* Coloured label showing which wheel each field belongs to */
+.gup-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.gup-label--cat  { color: #a8dadc; }
+.gup-label--med  { color: #ff9aaa; }
+.gup-label--form { color: #c4a0ff; }
+.gup-label--sub  { color: #6ee7dc; }
+
+.gup-input {
+  flex: 1;
+  font-size: 0.88rem !important;
+  padding: 0.4rem 0.7rem !important;
+}
+
+/* ── Upload drop zone ─────────────────────────────────────────────────────── */
+.upload-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 2rem 1rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+  user-select: none;
+}
+
+.upload-drop-zone:hover,
+.upload-drop-zone--over {
+  border-color: var(--accent);
+  background: rgba(233, 69, 96, 0.06);
+}
+
+/* Solid border once a file has been chosen */
+.upload-drop-zone--has-file {
+  border-style: solid;
+  border-color: var(--accent-teal);
+}
+
+.upload-zone-icon { font-size: 2rem; }
+
+.upload-zone-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.upload-zone-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Upload image preview ─────────────────────────────────────────────────── */
+.upload-preview {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+/* ── Upload prompt display ────────────────────────────────────────────────── */
+.upload-prompt-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.upload-prompt-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Admin page layout ────────────────────────────────────────────────────── */
+.admin-wrap {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.admin-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+/* Action row inside each moderation card */
+.admin-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */

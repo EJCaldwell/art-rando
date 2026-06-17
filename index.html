@@ -55,13 +55,14 @@
       <p class="sheet-prompt">
         Make a <span id="res-subject" class="hl hl--subject"></span>
         <span id="res-form-phrase"> as a <span id="res-form" class="hl hl--form"></span></span>
-        using <span id="res-medium" class="hl hl--medium"></span>
-        <span class="res-cat">(<span id="res-category"></span>)</span>
+        <span id="res-medium-phrase"> using <span id="res-medium" class="hl hl--medium"></span></span>
+        <span id="res-cat-phrase" class="res-cat">(<span id="res-category"></span>)</span>
       </p>
 
       <div class="sheet-actions">
-        <button id="close-sheet-btn" class="btn btn--close-sheet">Close</button>
-        <button id="respin-btn"      class="btn btn--spin">Respin</button>
+        <button id="close-sheet-btn"    class="btn btn--close-sheet">Close</button>
+        <button id="save-gallery-btn"   class="btn btn--save-gallery">Upload Artwork</button>
+        <button id="respin-btn"         class="btn btn--spin">Respin</button>
       </div>
     </div>
 
@@ -81,14 +82,15 @@
       <span class="corner-btn-label">Help</span>
       <button id="help-btn" class="btn btn--icon">?</button>
     </div>
+    <div class="corner-btn-wrap">
+      <span class="corner-btn-label">Bug Report</span>
+      <button id="bug-btn" class="btn btn--icon" style="font-size:1.6rem">🐛</button>
+    </div>
   </div>
 
   <!-- ── Creator links — replace the href values with your own URLs ── -->
   <footer class="creator-links">
-    <a href="https://youtube.com/@yourchannel" class="creator-link" target="_blank" rel="noopener">
-      <img class="creator-icon" src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/youtube.svg" alt="" width="16" height="16">
-      YouTube
-    </a>
+    
     <span class="creator-links-sep">·</span>
     <a href="https://ko-fi.com/yourname" class="creator-link" target="_blank" rel="noopener">
       <img class="creator-icon" src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/kofi.svg" alt="" width="16" height="16">
@@ -96,7 +98,12 @@
     </a>
   </footer>
 
-  <!-- Load order matters: data → wheel renderer → editor → settings → help → gallery → app logic -->
+  <!-- Supabase CDN + client must load before auth.js and all other scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="supabase.js"></script>
+
+  <!-- Load order: auth → data → wheel renderer → editor → settings → help → gallery → app logic -->
+  <script src="auth.js"></script>
   <script src="data.js"></script>
   <script src="wheel.js"></script>
   <script src="editor.js"></script>

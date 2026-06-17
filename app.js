@@ -15,7 +15,10 @@
 // full creative prompt. The form phrase is omitted if the user skipped it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+
+  // Initialize the Supabase session cache before any UI reads auth state.
+  await initAuth();
 
   // ── DOM refs ──────────────────────────────────────────────────────────────
   const theCanvas      = document.getElementById('the-wheel');
@@ -23,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const skipBtn        = document.getElementById('skip-btn');
   const settingsBtn    = document.getElementById('settings-btn');
   const helpBtn        = document.getElementById('help-btn');
+  const bugBtn         = document.getElementById('bug-btn');
   const galleryBtn     = document.getElementById('gallery-btn');
   const wheelQuestion  = document.getElementById('wheel-question');
   const wheelResultLbl = document.getElementById('wheel-result');
@@ -33,10 +37,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const resCategory    = document.getElementById('res-category');
   const resMedium      = document.getElementById('res-medium');
   const resForm        = document.getElementById('res-form');
-  const resFormPhrase  = document.getElementById('res-form-phrase'); // the whole "as a [form]" span
+  const resFormPhrase  = document.getElementById('res-form-phrase');
+  const resMediumPhrase = document.getElementById('res-medium-phrase');
+  const resCatPhrase   = document.getElementById('res-cat-phrase');
   const resSubject     = document.getElementById('res-subject');
-  const closeSheetBtn  = document.getElementById('close-sheet-btn');
-  const respinBtn      = document.getElementById('respin-btn');
+  const closeSheetBtn   = document.getElementById('close-sheet-btn');
+  const saveGalleryBtn  = document.getElementById('save-gallery-btn');
+  const respinBtn       = document.getElementById('respin-btn');
 
   // One DOM element per step pill in the progress indicator.
   const stepEls = {
@@ -76,37 +83,62 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Apply saved preferences: animation speed, rotation count, and which wheels
     // to include. Defaults match wheel.js initial values for a clean first visit.
-    const prefs = currentData._prefs || {};
-    SPIN_DURATION   = prefs.spinDuration   || 4000;
-    SPIN_MIN_CYCLES = prefs.spinMinCycles  || 2;
-    const showForm  = prefs.showFormWheel === true; // default off
+    const prefs        = currentData._prefs || {};
+    SPIN_DURATION      = prefs.spinDuration  || 4000;
+    SPIN_MIN_CYCLES    = prefs.spinMinCycles || 2;
+    const showCategory = prefs.showCategoryWheel !== false; // default on
+    const showMedium   = prefs.showMediumWheel   !== false; // default on
+    const showForm     = prefs.showFormWheel     === true;  // default off
+    const showSubject  = prefs.showSubjectWheel  !== false; // default on
 
-    // Exclude the Form step entirely when the pref is off.
-    activeSteps = STEPS.filter(s => s.key !== 'form' || showForm);
+    activeSteps = STEPS.filter(({ key }) => {
+      if (key === 'category') return showCategory;
+      if (key === 'medium')   return showMedium;
+      if (key === 'form')     return showForm;
+      if (key === 'subject')  return showSubject;
+      return true;
+    });
 
-    // Show or hide the form pill in the progress indicator.
-    stepEls.form.classList.toggle('hidden', !showForm);
+    // Sync step pills with which wheels are active.
+    stepEls.category.classList.toggle('hidden', !showCategory);
+    stepEls.medium.classList.toggle('hidden',   !showMedium);
+    stepEls.form.classList.toggle('hidden',     !showForm);
+    stepEls.subject.classList.toggle('hidden',  !showSubject);
 
     state = {
       phase:     'idle',
       stepIndex: 0,
       category:  null,
       medium:    null,
-      form:      null, // null means the user skipped the form wheel
+      form:      null,
       subject:   null,
     };
 
-    // Load the first step (Category) into the wheel.
-    theWheel = new Wheel(theCanvas, categories);
+    // If the Category wheel is off, silently pre-pick one so Medium/Subject
+    // still have a valid source list.
+    if (!showCategory && categories.length) {
+      state.category = categories[Math.floor(Math.random() * categories.length)];
+    }
+
+    // Load the first active step into the wheel (may not be Category).
+    const firstItems = activeSteps.length ? (() => {
+      switch (activeSteps[0].key) {
+        case 'category': return categories;
+        case 'medium':   return currentData[state.category]?.media    || [];
+        case 'form':     return forms;
+        case 'subject':  return currentData[state.category]?.subjects || [];
+      }
+    })() : [];
+    theWheel = new Wheel(theCanvas, firstItems);
 
     // Reset progress pills — first step is active, rest are idle.
     updateStepIndicator(0);
 
     // Reset labels.
-    wheelQuestion.textContent  = activeSteps[0].question;
+    wheelQuestion.textContent  = activeSteps[0]?.question || '';
     wheelResultLbl.textContent = '—';
 
-    // Clear chips from the previous run.
+    // Clear chips from the previous run — must happen before auto-advance adds new chips.
     chosenRow.innerHTML = '';
 
     // Reset canvas visual state.
@@ -118,8 +150,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Hide the results sheet without animation on reset.
     hideSheet(false);
 
-    spinBtn.disabled    = false;
+    spinBtn.disabled     = false;
     settingsBtn.disabled = false;
+
+    // Auto-advance the first step if it only has one option.
+    if (activeSteps.length > 0) maybeAutoAdvance(0, firstItems);
   }
 
   // ── Step indicator helpers ────────────────────────────────────────────────
@@ -144,6 +179,23 @@ document.addEventListener('DOMContentLoaded', () => {
     chosenRow.appendChild(chip);
   }
 
+  // ── Single-item auto-advance ──────────────────────────────────────────────
+  // If a step's item list has exactly one entry, select it automatically and
+  // skip showing the wheel. Returns true when auto-advanced, false otherwise.
+  function maybeAutoAdvance(stepIndex, items) {
+    if (items.length !== 1) return false;
+    const { key, chipClass } = activeSteps[stepIndex];
+    state[key]       = items[0];
+    state.phase      = 'spinning';
+    spinBtn.disabled = true;
+    wheelResultLbl.textContent = items[0];
+    stepEls[key].classList.remove('step--active');
+    stepEls[key].classList.add('step--done');
+    addChosenChip(chipClass, items[0]);
+    completeStep(stepIndex);
+    return true;
+  }
+
   // ── Wheel transition ──────────────────────────────────────────────────────
   // Fades the canvas out, swaps in the new items, then fades it back in.
   function transitionToStep(stepIndex) {
@@ -155,16 +207,22 @@ document.addEventListener('DOMContentLoaded', () => {
       // Determine which item list to show for the incoming step.
       let items;
       switch (key) {
-        case 'category': items = categories;                                  break;
-        case 'medium':   items = currentData[state.category].media    || []; break;
-        case 'form':     items = forms;                                       break;
-        case 'subject':  items = currentData[state.category].subjects || []; break;
+        case 'category': items = categories;                                   break;
+        case 'medium':   items = currentData[state.category]?.media    || []; break;
+        case 'form':     items = forms;                                        break;
+        case 'subject':  items = currentData[state.category]?.subjects || []; break;
+      }
+
+      // Skip the wheel and auto-select if only one option exists.
+      if (maybeAutoAdvance(stepIndex, items)) {
+        theCanvas.classList.remove('wheel--fading');
+        return;
       }
 
       theWheel.setItems(items);
 
       // Update labels and pill state.
-      wheelQuestion.textContent  = STEPS[stepIndex].question;
+      wheelQuestion.textContent  = activeSteps[stepIndex].question;
       wheelResultLbl.textContent = '—';
       theCanvas.classList.remove('wheel--done');
       updateStepIndicator(stepIndex);
@@ -176,12 +234,12 @@ document.addEventListener('DOMContentLoaded', () => {
         skipBtn.classList.add('hidden');
       }
 
-      state.phase    = 'idle';
+      state.phase      = 'idle';
       spinBtn.disabled = false;
 
       // Fade back in.
       theCanvas.classList.remove('wheel--fading');
-    }, 320); // slightly longer than the 0.3s CSS transition
+    }, 320);
   }
 
   // ── Advance to the next step (or show results) ────────────────────────────
@@ -206,19 +264,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Populates the prompt and slides the sheet up into view.
   // The "as a [form]" phrase is hidden when state.form is null (skipped).
+  // Also snapshots the spin result to localStorage so the gallery upload modal
+  // can pre-fill the prompt fields even after this sheet is dismissed.
   function showSheet() {
-    resCategory.textContent = state.category;
-    resMedium.textContent   = state.medium;
-    resSubject.textContent  = state.subject;
+    try {
+      localStorage.setItem('art_rando_last_spin', JSON.stringify({
+        category: state.category,
+        medium:   state.medium,
+        form:     state.form,
+        subject:  state.subject,
+      }));
+    } catch (_) { /* storage unavailable — silently skip */ }
 
-    if (state.form) {
-      // Form was spun — show the phrase.
-      resForm.textContent = state.form;
-      resFormPhrase.classList.remove('hidden');
-    } else {
-      // Form was skipped — hide the whole "as a [form]" portion.
-      resFormPhrase.classList.add('hidden');
-    }
+    resSubject.textContent  = state.subject  || '—';
+    resMedium.textContent   = state.medium   || '';
+    resCategory.textContent = state.category || '';
+
+    resFormPhrase.classList.toggle('hidden',   !state.form);
+    resMediumPhrase.classList.toggle('hidden', !state.medium);
+    resCatPhrase.classList.toggle('hidden',    !state.category);
+    if (state.form) resForm.textContent = state.form;
 
     resultsSheet.classList.add('sheet--visible');
     sheetBackdrop.classList.add('sheet--visible');
@@ -308,6 +373,19 @@ document.addEventListener('DOMContentLoaded', () => {
   closeSheetBtn.addEventListener('click', () => hideSheet(true));
   sheetBackdrop.addEventListener('click', () => hideSheet(true));
 
+  // ── Upload Artwork button ─────────────────────────────────────────────────
+  // Opens the image upload dialog from gallery.js so the user can submit their
+  // artwork for the current spin result.  The image goes into Supabase Storage
+  // and lands in the gallery after admin review.
+  saveGalleryBtn.addEventListener('click', () => {
+    openUploadModal({
+      category: state.category,
+      medium:   state.medium,
+      form:     state.form,
+      subject:  state.subject,
+    });
+  });
+
   respinBtn.addEventListener('click', () => {
     hideSheet(true);
     setTimeout(initApp, 420);
@@ -325,6 +403,12 @@ document.addEventListener('DOMContentLoaded', () => {
   helpBtn.addEventListener('click', () => {
     if (state.phase === 'spinning') return;
     openHelp(() => {});
+  });
+
+  // ── Bug report button ─────────────────────────────────────────────────────
+  bugBtn.addEventListener('click', () => {
+    if (state.phase === 'spinning') return;
+    openBugReport();   // defined in help.js
   });
 
   // ── Gallery button ────────────────────────────────────────────────────────
