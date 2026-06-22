@@ -124,8 +124,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     regSubmitBtn.disabled    = true;
-    regSubmitBtn.textContent = 'Creating account…';
+    regSubmitBtn.textContent = 'Checking username…';
     hideError(registerError);
+
+    // Check availability before creating an auth user — case-insensitive so
+    // "EJ" and "ej" are treated as the same name.
+    const { data: existing } = await _sb
+      .from('profiles')
+      .select('id')
+      .ilike('username', username)
+      .maybeSingle();
+
+    if (existing) {
+      showError(registerError, 'That username is already taken.');
+      regSubmitBtn.disabled    = false;
+      regSubmitBtn.textContent = 'Create Account';
+      return;
+    }
+
+    regSubmitBtn.textContent = 'Creating account…';
 
     // Build metadata — full_name is what the Supabase dashboard shows as display name.
     const metadata = { username, full_name: username };
@@ -138,11 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     if (error) {
-      // "User already registered" means the username is taken.
-      const msg = error.message?.toLowerCase().includes('already registered')
-        ? 'That username is already taken.'
-        : (error.message || 'Registration failed. Please try again.');
-      showError(registerError, msg);
+      showError(registerError, error.message || 'Registration failed. Please try again.');
       regSubmitBtn.disabled    = false;
       regSubmitBtn.textContent = 'Create Account';
       return;
@@ -156,8 +169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         username:   username,
         auth_email: internalEmail(username),
       });
-      // Ignore 23505 (unique violation) — username already exists in profiles.
-      if (profileErr && profileErr.code !== '23505') {
+      if (profileErr) {
         console.error('Profile insert failed:', profileErr);
       }
     }
