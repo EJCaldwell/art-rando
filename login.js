@@ -1,20 +1,23 @@
 // login.js — handles sign-in and account creation via Supabase Auth.
 //
 // Two forms live on login.html, toggled by the tab buttons:
-//   • Sign In    — email + password, signs the user into an existing account.
-//   • Register   — email + username + password, creates a new account and
-//                  inserts a row into the public.profiles table.
+//   • Sign In  — username + password.
+//   • Register — username + password + optional email.
 //
-// On success both flows redirect to index.html.
-// If Supabase requires email confirmation (Supabase dashboard default), the
-// register flow shows a "check your email" message instead of redirecting.
+// Supabase Auth requires an email address internally.  We generate a fixed
+// internal email from the username (username@art-rando.local) that is never
+// shown to the user.  If the user provides a real email it is stored in
+// user_metadata as contact_email for future account-recovery use.
+//
+// NOTE: Email confirmation must be disabled in the Supabase dashboard
+// (Authentication → Settings → uncheck "Enable email confirmations") because
+// the internal email address is not a real deliverable inbox.
 //
 // Depends on: supabase.js (_sb), auth.js (initAuth, getSession)
 // ─────────────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // Initialize the session cache before checking whether to redirect.
   await initAuth();
 
   // Skip the login page entirely if the user is already signed in.
@@ -24,11 +27,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ── DOM refs ────────────────────────────────────────────────────────────────
-  const tabSignin    = document.getElementById('tab-signin');
-  const tabRegister  = document.getElementById('tab-register');
-  const signinForm   = document.getElementById('signin-form');
-  const registerForm = document.getElementById('register-form');
-  const signinError  = document.getElementById('signin-error');
+  const tabSignin     = document.getElementById('tab-signin');
+  const tabRegister   = document.getElementById('tab-register');
+  const signinForm    = document.getElementById('signin-form');
+  const registerForm  = document.getElementById('register-form');
+  const signinError   = document.getElementById('signin-error');
   const registerError = document.getElementById('register-error');
 
   // ── Tab switching ────────────────────────────────────────────────────────────
@@ -56,12 +59,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   signinForm.addEventListener('submit', async e => {
     e.preventDefault();
 
-    const email    = signinForm.elements.email.value.trim();
+    const username = signinForm.elements.username.value.trim();
     const password = signinForm.elements.password.value;
 
-    // Basic client-side guard before hitting the network.
-    if (!email || !password) {
-      showError(signinError, 'Please enter your email and password.');
+    if (!username || !password) {
+      showError(signinError, 'Please enter your username and password.');
       return;
     }
 
@@ -69,14 +71,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     siSubmitBtn.textContent = 'Signing in…';
     hideError(signinError);
 
-    const { error } = await _sb.auth.signInWithPassword({ email, password });
+    const { error } = await _sb.auth.signInWithPassword({
+      email:    internalEmail(username),
+      password,
+    });
 
     if (error) {
-      showError(signinError, error.message || 'Sign-in failed. Please try again.');
+      showError(signinError, 'Incorrect username or password.');
       siSubmitBtn.disabled    = false;
       siSubmitBtn.textContent = 'Sign In';
     } else {
-      // Supabase updates the session automatically; redirect immediately.
       window.location.href = 'index.html';
     }
   });
@@ -87,22 +91,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   registerForm.addEventListener('submit', async e => {
     e.preventDefault();
 
-    const email    = registerForm.elements.email.value.trim();
-    const username = registerForm.elements.username.value.trim();
-    const password = registerForm.elements.password.value;
+    const username     = registerForm.elements.username.value.trim();
+    const contactEmail = registerForm.elements.email.value.trim();
+    const password     = registerForm.elements.password.value;
 
-    // Client-side validation before touching Supabase.
-    if (!email || !username || !password) {
-      showError(registerError, 'Please fill in all fields.');
+    if (!username || !password) {
+      showError(registerError, 'Please fill in your username and password.');
       return;
     }
     if (password.length < 6) {
       showError(registerError, 'Password must be at least 6 characters.');
       return;
     }
-    // Only allow letters, numbers, and underscores in usernames.
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       showError(registerError, 'Username can only contain letters, numbers, and underscores.');
+      return;
+    }
+    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+      showError(registerError, 'Please enter a valid email address or leave it blank.');
       return;
     }
 
@@ -110,16 +116,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     regSubmitBtn.textContent = 'Creating account…';
     hideError(registerError);
 
-    // Create the Supabase Auth user.  The username is stored in user_metadata so
-    // getSession() can read it without a separate profiles query.
+    // Build metadata — always include username; include real email only if provided.
+    const metadata = { username };
+    if (contactEmail) metadata.contact_email = contactEmail;
+
     const { data, error } = await _sb.auth.signUp({
-      email,
+      email:    internalEmail(username),
       password,
-      options: { data: { username } },
+      options:  { data: metadata },
     });
 
     if (error) {
-      showError(registerError, error.message || 'Registration failed. Please try again.');
+      // "User already registered" means the username is taken.
+      const msg = error.message?.toLowerCase().includes('already registered')
+        ? 'That username is already taken.'
+        : (error.message || 'Registration failed. Please try again.');
+      showError(registerError, msg);
       regSubmitBtn.disabled    = false;
       regSubmitBtn.textContent = 'Create Account';
       return;
@@ -131,41 +143,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         id:       data.user.id,
         username: username,
       });
-      // Ignore 23505 (unique violation) — happens if the user re-registers with
-      // the same email after email confirmation without signing in.
+      // Ignore 23505 (unique violation) — username already exists in profiles.
       if (profileErr && profileErr.code !== '23505') {
         console.error('Profile insert failed:', profileErr);
       }
     }
 
     if (data.session) {
-      // Email confirmation is disabled — the user is signed in immediately.
+      // Email confirmation is disabled — signed in immediately.
       window.location.href = 'index.html';
     } else {
-      // Supabase requires email confirmation (default for new projects).
-      // Show a success message and let the user know to check their inbox.
+      // Email confirmation is still on in the Supabase dashboard.
+      // Disable it at Authentication → Settings → "Enable email confirmations".
       regSubmitBtn.textContent = 'Account created!';
-      showSuccess(registerError, 'Check your email to confirm your account, then sign in.');
+      showSuccess(registerError, 'Your account was created. Sign in to continue.');
     }
   });
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  // Shows an error message in the given element.
+  // Derives a consistent internal Supabase auth email from a username.
+  // Users never see this address — it only exists to satisfy Supabase's
+  // email requirement.
+  function internalEmail(username) {
+    return username.toLowerCase() + '@art-rando.local';
+  }
+
   function showError(el, msg) {
-    el.textContent  = msg;
-    el.style.color  = '';        // reset any previous success colour
+    el.textContent = msg;
+    el.style.color = '';
     el.classList.remove('hidden');
   }
 
-  // Shows a success / info message (teal) in the given element.
   function showSuccess(el, msg) {
-    el.textContent  = msg;
-    el.style.color  = 'var(--accent-teal)';
+    el.textContent = msg;
+    el.style.color = 'var(--accent-teal)';
     el.classList.remove('hidden');
   }
 
-  // Hides the error / message element.
   function hideError(el) {
     el.classList.add('hidden');
   }
