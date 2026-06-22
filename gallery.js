@@ -94,12 +94,20 @@ function openGallery() {
     signOutBtn.className   = 'btn--reset-defaults gallery-signout-btn';
     signOutBtn.textContent = 'Sign out';
     signOutBtn.addEventListener('click', async () => {
-      await clearSession();    // from auth.js — signs out via Supabase
+      await clearSession();
       close();
     });
 
     headerRight.appendChild(userLabel);
     headerRight.appendChild(signOutBtn);
+  } else {
+    // Guest — show a sign-in link so they can reach the login page.
+    const signInLink = document.createElement('a');
+    signInLink.href      = 'login.html';
+    signInLink.className = 'btn btn--edit';
+    signInLink.style.cssText = 'text-decoration:none;font-size:0.82rem;padding:0.35rem 0.9rem;';
+    signInLink.textContent   = 'Sign In';
+    headerRight.appendChild(signInLink);
   }
 
   const closeX = document.createElement('button');
@@ -111,20 +119,20 @@ function openGallery() {
   header.appendChild(title);
   header.appendChild(headerRight);
 
-  // ── Tab bar (only shown when signed in) ────────────────────────────────────
+  // ── Tab bar — always shown; My Uploads only when signed in ───────────────
   const tabBar = document.createElement('div');
   tabBar.className = 'gallery-tabs';
 
   const publicTab = document.createElement('button');
   publicTab.className   = 'gallery-tab gallery-tab--active';
   publicTab.textContent = 'Public Gallery';
+  tabBar.appendChild(publicTab);
 
   const myTab = document.createElement('button');
   myTab.className   = 'gallery-tab';
   myTab.textContent = 'My Uploads';
 
   if (session?.loggedIn) {
-    tabBar.appendChild(publicTab);
     tabBar.appendChild(myTab);
   }
 
@@ -222,7 +230,7 @@ function openGallery() {
 
   // ── Assemble and mount ─────────────────────────────────────────────────────
   card.appendChild(header);
-  if (session?.loggedIn) card.appendChild(tabBar);
+  card.appendChild(tabBar);
   card.appendChild(body);
   card.appendChild(footer);
   overlay.appendChild(card);
@@ -234,12 +242,8 @@ function openGallery() {
   // Two rAFs give the browser a frame to paint before the fade transition fires.
   requestAnimationFrame(() => requestAnimationFrame(() => overlay.classList.add('modal--visible')));
 
-  // Show the auth gate when not logged in, public gallery otherwise.
-  if (session?.loggedIn) {
-    showPublicGallery();
-  } else {
-    renderAuthGate(body);
-  }
+  // Always show the public gallery; sign-in is only needed to upload.
+  showPublicGallery();
 
   // Async admin check — runs after the modal is visible so it doesn't delay
   // opening.  Inserts an Admin Panel link into the header for admin users only.

@@ -71,10 +71,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     siSubmitBtn.textContent = 'Signing in…';
     hideError(signinError);
 
-    const { error } = await _sb.auth.signInWithPassword({
-      email:    internalEmail(username),
-      password,
-    });
+    // Resolve the auth email: if the input contains @ use it directly as an email.
+    // Otherwise look up the profile row to get the stored auth_email for that username.
+    let authEmail;
+    if (username.includes('@')) {
+      authEmail = username;
+    } else {
+      const { data: profile } = await _sb
+        .from('profiles')
+        .select('auth_email')
+        .eq('username', username)
+        .single();
+      authEmail = profile?.auth_email ?? internalEmail(username);
+    }
+
+    const { error } = await _sb.auth.signInWithPassword({ email: authEmail, password });
 
     if (error) {
       showError(signinError, 'Incorrect username or password.');
@@ -116,8 +127,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     regSubmitBtn.textContent = 'Creating account…';
     hideError(registerError);
 
-    // Build metadata — always include username; include real email only if provided.
-    const metadata = { username };
+    // Build metadata — full_name is what the Supabase dashboard shows as display name.
+    const metadata = { username, full_name: username };
     if (contactEmail) metadata.contact_email = contactEmail;
 
     const { data, error } = await _sb.auth.signUp({
@@ -138,10 +149,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Write the profile row so the admin page and gallery can display the username.
+    // auth_email is stored here so username-based sign-in can look it up later.
     if (data.user) {
       const { error: profileErr } = await _sb.from('profiles').insert({
-        id:       data.user.id,
-        username: username,
+        id:         data.user.id,
+        username:   username,
+        auth_email: internalEmail(username),
       });
       // Ignore 23505 (unique violation) — username already exists in profiles.
       if (profileErr && profileErr.code !== '23505') {
