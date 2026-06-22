@@ -222,7 +222,7 @@
         const match = document.cookie.match(/(?:^|;\s*)art_rando_prefs=([^;]*)/);
         const json  = match ? decodeURIComponent(match[1]) : '(no cookie set)';
         navigator.clipboard.writeText(json).then(() => {
-          copyBtn.textContent = 'copied ✓';
+          copyBtn.textContent = 'copied';
           setTimeout(() => { copyBtn.textContent = 'copy cookie json'; }, 2000);
         }).catch(() => {
           // Clipboard API may be blocked — fall back to showing the data.

@@ -10,8 +10,17 @@
 
   <div class="admin-wrap">
     <div class="admin-header">
-      <h1 class="admin-title">Moderation Queue</h1>
+      <h1 class="admin-title">Admin Panel</h1>
       <a href="index.html" class="btn btn--edit" style="text-decoration:none">← Back</a>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-bottom:1.5rem">
+      <div class="gallery-tabs">
+        <button id="tab-queue" class="gallery-tab gallery-tab--active">Moderation Queue</button>
+        <button id="tab-bugs"  class="gallery-tab">Bug Reports</button>
+      </div>
+      <button id="cleanse-btn" class="btn btn--edit" style="font-size:0.82rem;padding:0.45rem 1.1rem;">
+        Run Weekly Cleanse
+      </button>
     </div>
     <div id="mod-content" class="gallery-loading">Loading…</div>
   </div>

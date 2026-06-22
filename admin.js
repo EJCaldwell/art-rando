@@ -38,6 +38,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
+  // ── Tab switching ──────────────────────────────────────────────────────────
+  const tabQueue = document.getElementById('tab-queue');
+  const tabBugs  = document.getElementById('tab-bugs');
+
+  tabQueue.addEventListener('click', () => {
+    tabQueue.classList.add('gallery-tab--active');
+    tabBugs.classList.remove('gallery-tab--active');
+    loadPending();
+  });
+
+  tabBugs.addEventListener('click', () => {
+    tabBugs.classList.add('gallery-tab--active');
+    tabQueue.classList.remove('gallery-tab--active');
+    loadBugReports();
+  });
+
+  // ── Manual weekly cleanse button ───────────────────────────────────────────
+  document.getElementById('cleanse-btn').addEventListener('click', async () => {
+    if (!confirm('Delete all gallery posts older than 7 days? This cannot be undone.')) return;
+    await runCleanse();
+  });
+
   // ── Load pending posts ─────────────────────────────────────────────────────
   loadPending();
 
@@ -111,20 +133,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     actions.className = 'admin-card-actions';
 
     const approveBtn = document.createElement('button');
-    approveBtn.textContent = '✓ Approve';
+    approveBtn.textContent = 'Approve';
     approveBtn.className   = 'btn btn--spin';
     approveBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;';
     approveBtn.addEventListener('click', () => setStatus(post.id, 'approved', card));
 
     const rejectBtn = document.createElement('button');
-    rejectBtn.textContent = '✕ Reject';
+    rejectBtn.textContent = 'Reject';
     rejectBtn.className   = 'btn btn--close-sheet';
     rejectBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;color:var(--accent);border-color:var(--accent);';
     rejectBtn.addEventListener('click', () => setStatus(post.id, 'rejected', card));
 
     // Delete button — permanently removes the image from Storage and the DB row.
     const deleteBtn = document.createElement('button');
-    deleteBtn.textContent = '🗑 Delete';
+    deleteBtn.textContent = 'Delete';
     deleteBtn.className   = 'btn btn--edit';
     deleteBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;color:var(--text-muted);';
     deleteBtn.addEventListener('click', () => deletePost(post, card));
@@ -191,6 +213,138 @@ document.addEventListener('DOMContentLoaded', async () => {
     cardEl.style.transition = 'opacity 0.35s';
     cardEl.style.opacity    = '0.2';
     setTimeout(() => cardEl.remove(), 370);
+  }
+
+  // ── Bug reports ───────────────────────────────────────────────────────────
+  // Fetches all submitted bug reports newest-first and renders a simple list.
+  async function loadBugReports() {
+    content.innerHTML = '<p class="gallery-loading">Loading bug reports…</p>';
+
+    const { data: reports, error } = await _sb
+      .from('bug_reports')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      content.innerHTML = '<p class="gallery-error">Failed to load bug reports.</p>';
+      return;
+    }
+
+    if (!reports || reports.length === 0) {
+      content.innerHTML = '<p class="gallery-loading" style="text-align:center;padding:4rem 0">No bug reports yet.</p>';
+      return;
+    }
+
+    const summary = document.createElement('p');
+    summary.className = 'gallery-img-meta';
+    summary.style.marginBottom = '1rem';
+    summary.textContent = `${reports.length} report${reports.length !== 1 ? 's' : ''}`;
+
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:0.75rem;';
+
+    reports.forEach(report => {
+      const row = document.createElement('div');
+      row.className = 'gallery-img-card';
+      row.style.cssText = 'padding:1rem 1.2rem;display:flex;flex-direction:column;gap:0.4rem;';
+
+      // Who submitted it and when
+      const meta = document.createElement('p');
+      meta.className   = 'gallery-img-meta';
+      meta.textContent = `${report.username || 'Anonymous'} · ${new Date(report.created_at).toLocaleString()}`;
+
+      // The bug description
+      const desc = document.createElement('p');
+      desc.style.cssText  = 'color:var(--text);white-space:pre-wrap;word-break:break-word;';
+      desc.textContent = report.description;
+
+      // Page URL where the bug occurred
+      const url = document.createElement('p');
+      url.className   = 'gallery-img-meta';
+      url.textContent = report.page_url || '';
+
+      // Delete button — removes the report from the DB
+      const delBtn = document.createElement('button');
+      delBtn.className   = 'btn btn--edit';
+      delBtn.style.cssText = 'font-size:0.78rem;padding:0.35rem 0.9rem;align-self:flex-end;color:var(--text-muted);';
+      delBtn.textContent = 'Dismiss';
+      delBtn.addEventListener('click', async () => {
+        delBtn.disabled = true;
+        const { error: delErr } = await _sb.from('bug_reports').delete().eq('id', report.id);
+        if (delErr) { delBtn.disabled = false; return; }
+        // Fade out and remove the row
+        row.style.transition = 'opacity 0.35s';
+        row.style.opacity    = '0.2';
+        setTimeout(() => row.remove(), 370);
+      });
+
+      row.appendChild(meta);
+      row.appendChild(desc);
+      if (report.page_url) row.appendChild(url);
+      row.appendChild(delBtn);
+      list.appendChild(row);
+    });
+
+    content.innerHTML = '';
+    content.appendChild(summary);
+    content.appendChild(list);
+  }
+
+  // ── Weekly cleanse ─────────────────────────────────────────────────────────
+  // Deletes all posts older than 7 days and removes their Storage images.
+  // Mirrors the automated Edge Function so admins can also trigger it on demand.
+  async function runCleanse() {
+    const cleanseBtn = document.getElementById('cleanse-btn');
+    cleanseBtn.disabled = true;
+    cleanseBtn.textContent = 'Cleansing…';
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+
+    // Fetch old posts so we can remove their Storage files.
+    const { data: old, error: fetchErr } = await _sb
+      .from('gallery_posts')
+      .select('id, image_path')
+      .lt('created_at', cutoff.toISOString());
+
+    if (fetchErr) {
+      alert('Could not fetch old posts: ' + fetchErr.message);
+      cleanseBtn.disabled = false;
+      cleanseBtn.textContent = 'Run Weekly Cleanse';
+      return;
+    }
+
+    if (!old || old.length === 0) {
+      alert('Nothing to cleanse — no posts older than 7 days.');
+      cleanseBtn.disabled = false;
+      cleanseBtn.textContent = 'Run Weekly Cleanse';
+      return;
+    }
+
+    // Delete Storage files (best-effort — missing files are not an error).
+    const paths = old.map(p => p.image_path);
+    await _sb.storage.from('gallery-images').remove(paths);
+
+    // Delete DB rows.
+    const ids = old.map(p => p.id);
+    const { error: deleteErr } = await _sb
+      .from('gallery_posts')
+      .delete()
+      .in('id', ids);
+
+    if (deleteErr) {
+      alert('Could not delete posts: ' + deleteErr.message);
+      cleanseBtn.disabled = false;
+      cleanseBtn.textContent = 'Run Weekly Cleanse';
+      return;
+    }
+
+    alert(`Cleanse complete — ${old.length} post${old.length !== 1 ? 's' : ''} removed.`);
+    cleanseBtn.disabled = false;
+    cleanseBtn.textContent = 'Run Weekly Cleanse';
+
+    // Refresh whichever tab is currently active.
+    if (tabQueue.classList.contains('gallery-tab--active')) loadPending();
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

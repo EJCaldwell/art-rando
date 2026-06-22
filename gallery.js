@@ -16,6 +16,50 @@
 // Depends on: supabase.js (_sb), auth.js (getSession, clearSession)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Shared upload constants ───────────────────────────────────────────────────
+// Static image types accepted by both upload modals — GIF and video excluded.
+const ALLOWED_IMAGE_TYPES = [
+  'image/jpeg', 'image/png', 'image/heic', 'image/heif',
+  'image/webp', 'image/avif', 'image/bmp', 'image/tiff',
+];
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB
+
+// Wires file input and drag-drop events onto a drop zone.
+// Validates type/size, renders a preview, and enables the submit button.
+// Returns a getter — call it inside the submit handler to retrieve the chosen file.
+function setupDropZone(zone, fileInput, preview, submitBtn, showErr, hideErr) {
+  let file = null;
+
+  function pick(f) {
+    if (!ALLOWED_IMAGE_TYPES.includes(f.type)) {
+      showErr('Please choose a static image (JPG, PNG, HEIC, WEBP, etc.) — no GIFs or videos.');
+      return;
+    }
+    if (f.size > MAX_UPLOAD_BYTES) {
+      showErr('Image must be 20 MB or smaller.');
+      return;
+    }
+    hideErr();
+    file = f;
+    submitBtn.disabled = false;
+    zone.classList.add('upload-drop-zone--has-file');
+    const reader = new FileReader();
+    reader.onload = ev => { preview.src = ev.target.result; preview.classList.remove('hidden'); };
+    reader.readAsDataURL(f);
+  }
+
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) pick(fileInput.files[0]); });
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('upload-drop-zone--over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('upload-drop-zone--over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('upload-drop-zone--over');
+    if (e.dataTransfer.files[0]) pick(e.dataTransfer.files[0]);
+  });
+
+  return () => file;
+}
+
 // ── Gallery modal ─────────────────────────────────────────────────────────────
 
 function openGallery() {
@@ -106,8 +150,19 @@ function openGallery() {
       return;
     }
 
+    body.innerHTML = '';
+
+    // Retention notice — separate from the upload content policy.
+    const notice = document.createElement('p');
+    notice.className   = 'gallery-policy-notice';
+    notice.textContent = 'The gallery is cleansed weekly to make room for new artwork — uploaded images are not kept permanently. This is not a storage service; do not rely on it to preserve your work. The gallery owner is not responsible for any content removed during a weekly cleanse.';
+    body.appendChild(notice);
+
+    const gridWrap = document.createElement('div');
+    body.appendChild(gridWrap);
+
     // showStatus = false so the public tab shows artist name, not status badges.
-    renderPostGrid(body, posts, false);
+    renderPostGrid(gridWrap, posts, false);
   }
 
   // Loads and renders the current user's own posts (all statuses).
@@ -224,7 +279,7 @@ function renderPostGrid(container, posts, showStatus, onDelete) {
     // Empty state — different message depending on which tab we're on.
     container.innerHTML = `
       <div class="gallery-empty">
-        <p class="gallery-state-icon">${showStatus ? '🖼️' : '🎨'}</p>
+        <p class="gallery-state-icon"></p>
         <p class="gallery-state-heading">${showStatus ? 'No uploads yet' : 'No artwork yet'}</p>
         <p class="gallery-state-desc">${
           showStatus
@@ -279,7 +334,7 @@ function renderPostGrid(container, posts, showStatus, onDelete) {
     if (showStatus) {
       const delBtn = document.createElement('button');
       delBtn.className   = 'gallery-card-delete';
-      delBtn.textContent = '✕';
+      delBtn.textContent = 'Delete';
       delBtn.title       = 'Delete this post';
       delBtn.addEventListener('click', async () => {
         delBtn.disabled = true;
@@ -306,7 +361,6 @@ function renderAuthGate(container) {
   const wrap = document.createElement('div');
   wrap.className = 'gallery-auth-prompt';
   wrap.innerHTML = `
-    <p class="gallery-state-icon">🔒</p>
     <p class="gallery-state-heading">Sign in to view the gallery</p>
     <p class="gallery-state-desc">Create a free account to browse artwork and upload your own.</p>
     <a href="login.html" class="btn btn--spin gallery-auth-btn">Sign In / Register</a>
@@ -354,7 +408,7 @@ function openUploadModal(promptState) {
         <input type="file" id="upload-file-input"
                accept="image/jpeg,image/png,image/heic,image/heif,image/webp,image/avif,image/bmp,image/tiff"
                style="display:none" />
-        <span class="upload-zone-icon">🖼️</span>
+        <span class="upload-zone-icon"></span>
         <span class="upload-zone-text">Click to choose an image</span>
         <span class="upload-zone-hint">JPG · PNG · HEIC · WEBP — no GIFs or video — max 20 MB</span>
       </label>
@@ -363,6 +417,9 @@ function openUploadModal(promptState) {
       <img id="upload-preview" class="upload-preview hidden" alt="Preview" />
 
       <p id="upload-error" class="login-error hidden"></p>
+
+      <p class="gallery-policy-notice">No inappropriate or AI-generated content. Violations will be rejected and may result in a permanent account ban.</p>
+      <p class="gallery-policy-notice">The gallery is cleansed weekly — images are not stored permanently. This is not a storage service; the gallery owner is not responsible for deleted content.</p>
     </div>
     <div class="modal-footer">
       <button id="upload-cancel-btn" class="btn btn--close-sheet">Cancel</button>
@@ -386,70 +443,30 @@ function openUploadModal(promptState) {
   const closeXBtn = card.querySelector('#upload-close-x');
   const errorEl   = card.querySelector('#upload-error');
 
-  let selectedFile = null;
-
   // ── File selection ─────────────────────────────────────────────────────────
-  // File picker via label click (the hidden <input type="file"> inside the label).
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) selectFile(fileInput.files[0]);
-  });
-
-  // Drag-and-drop support for the drop zone.
-  zone.addEventListener('dragover', e => {
-    e.preventDefault();
-    zone.classList.add('upload-drop-zone--over');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('upload-drop-zone--over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('upload-drop-zone--over');
-    if (e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]);
-  });
-
-  // Validates the chosen file and shows a preview thumbnail.
-  function selectFile(file) {
-    // GIF and video formats are intentionally excluded — static images only.
-    const allowed = ['image/jpeg', 'image/png', 'image/heic', 'image/heif',
-                     'image/webp', 'image/avif', 'image/bmp', 'image/tiff'];
-    if (!allowed.includes(file.type)) {
-      showErr('Please choose a static image (JPG, PNG, HEIC, WEBP, etc.) — no GIFs or videos.');
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      showErr('Image must be 20 MB or smaller.');
-      return;
-    }
-
-    hideErr();
-    selectedFile = file;
-    submitBtn.disabled = false;
-    zone.classList.add('upload-drop-zone--has-file');
-
-    // Read the file locally to render the preview before uploading.
-    const reader = new FileReader();
-    reader.onload = ev => {
-      preview.src = ev.target.result;
-      preview.classList.remove('hidden');
-    };
-    reader.readAsDataURL(file);
-  }
+  const getFile = setupDropZone(zone, fileInput, preview, submitBtn, showErr, hideErr);
 
   // ── Upload handler ─────────────────────────────────────────────────────────
   submitBtn.addEventListener('click', async () => {
+    const selectedFile = getFile();
     if (!selectedFile) return;
 
     submitBtn.disabled    = true;
-    submitBtn.textContent = 'Uploading…';
+    submitBtn.textContent = 'Compressing…';
     hideErr();
 
-    // Store the image at {userId}/{timestamp}.{ext} so the delete RLS policy
-    // (which checks the first path segment) matches the user's own files.
-    const ext  = selectedFile.name.split('.').pop().toLowerCase() || 'jpg';
+    // Compress to JPEG before uploading; falls back to the original if it can't
+    // be decoded (e.g. HEIC on non-Apple) or if compression makes it larger.
+    const fileToUpload = await compressImage(selectedFile);
+
+    // Store at {userId}/{timestamp}.{ext} — the prefix is checked by the delete RLS policy.
+    submitBtn.textContent = 'Uploading…';
+    const ext  = fileToUpload.name.split('.').pop().toLowerCase() || 'jpg';
     const path = `${session.userId}/${Date.now()}.${ext}`;
 
     const { error: uploadErr } = await _sb.storage
       .from('gallery-images')
-      .upload(path, selectedFile, { contentType: selectedFile.type });
+      .upload(path, fileToUpload, { contentType: fileToUpload.type });
 
     if (uploadErr) {
       showErr('Upload failed: ' + uploadErr.message);
@@ -477,7 +494,7 @@ function openUploadModal(promptState) {
     }
 
     // Show a confirmation message then close after a brief pause.
-    submitBtn.textContent = '✓ Submitted for review!';
+    submitBtn.textContent = 'Submitted for review!';
     setTimeout(() => closeModal(), 1800);
   });
 
@@ -574,13 +591,16 @@ function openGalleryUploadModal(onSuccess) {
         <input type="file" id="gup-file-input"
                accept="image/jpeg,image/png,image/heic,image/heif,image/webp,image/avif,image/bmp,image/tiff"
                style="display:none" />
-        <span class="upload-zone-icon">🖼️</span>
+        <span class="upload-zone-icon"></span>
         <span class="upload-zone-text">Click to choose an image</span>
         <span class="upload-zone-hint">JPG · PNG · HEIC · WEBP — no GIFs or video — max 20 MB</span>
       </label>
 
       <img id="gup-preview" class="upload-preview hidden" alt="Preview" />
       <p id="gup-error" class="login-error hidden"></p>
+
+      <p class="gallery-policy-notice">No inappropriate or AI-generated content. Violations will be rejected and may result in a permanent account ban.</p>
+      <p class="gallery-policy-notice">The gallery is cleansed weekly — images are not stored permanently. This is not a storage service; the gallery owner is not responsible for deleted content.</p>
     </div>
     <div class="modal-footer">
       <button id="gup-cancel" class="btn btn--close-sheet">Cancel</button>
@@ -604,52 +624,12 @@ function openGalleryUploadModal(onSuccess) {
   const closeXBtn  = card.querySelector('#gup-close-x');
   const errorEl    = card.querySelector('#gup-error');
 
-  let selectedFile = null;
-
   // ── File selection ─────────────────────────────────────────────────────────
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) selectFile(fileInput.files[0]);
-  });
-
-  zone.addEventListener('dragover', e => {
-    e.preventDefault();
-    zone.classList.add('upload-drop-zone--over');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('upload-drop-zone--over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('upload-drop-zone--over');
-    if (e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]);
-  });
-
-  function selectFile(file) {
-    // GIF and video formats are intentionally excluded — static images only.
-    const allowed = ['image/jpeg', 'image/png', 'image/heic', 'image/heif',
-                     'image/webp', 'image/avif', 'image/bmp', 'image/tiff'];
-    if (!allowed.includes(file.type)) {
-      showErr('Please choose a static image (JPG, PNG, HEIC, WEBP, etc.) — no GIFs or videos.');
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      showErr('Image must be 20 MB or smaller.');
-      return;
-    }
-    hideErr();
-    selectedFile = file;
-    submitBtn.disabled = false;
-    zone.classList.add('upload-drop-zone--has-file');
-
-    // Show a local preview before uploading.
-    const reader = new FileReader();
-    reader.onload = ev => {
-      preview.src = ev.target.result;
-      preview.classList.remove('hidden');
-    };
-    reader.readAsDataURL(file);
-  }
+  const getFile = setupDropZone(zone, fileInput, preview, submitBtn, showErr, hideErr);
 
   // ── Upload handler ─────────────────────────────────────────────────────────
   submitBtn.addEventListener('click', async () => {
+    const selectedFile = getFile();
     if (!selectedFile) return;
 
     // Build the prompt from the editable fields.
@@ -667,15 +647,18 @@ function openGalleryUploadModal(onSuccess) {
     }
 
     submitBtn.disabled    = true;
-    submitBtn.textContent = 'Uploading…';
+    submitBtn.textContent = 'Compressing…';
     hideErr();
 
-    const ext  = selectedFile.name.split('.').pop().toLowerCase() || 'jpg';
+    const fileToUpload = await compressImage(selectedFile);
+
+    submitBtn.textContent = 'Uploading…';
+    const ext  = fileToUpload.name.split('.').pop().toLowerCase() || 'jpg';
     const path = `${session.userId}/${Date.now()}.${ext}`;
 
     const { error: uploadErr } = await _sb.storage
       .from('gallery-images')
-      .upload(path, selectedFile, { contentType: selectedFile.type });
+      .upload(path, fileToUpload, { contentType: fileToUpload.type });
 
     if (uploadErr) {
       showErr('Upload failed: ' + uploadErr.message);
@@ -700,7 +683,7 @@ function openGalleryUploadModal(onSuccess) {
       return;
     }
 
-    submitBtn.textContent = '✓ Submitted for review!';
+    submitBtn.textContent = 'Submitted for review!';
     setTimeout(() => {
       closeModal();
       if (onSuccess) onSuccess();
@@ -781,6 +764,50 @@ function escHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+// Compresses an image file to JPEG before uploading, capping the longest side
+// at maxPx and using the given quality (0–1).  Falls back silently to the
+// original file if the browser can't decode it (e.g. HEIC on non-Apple devices)
+// or if the compressed result is actually larger than the original.
+function compressImage(file, maxPx = 1920, quality = 0.82) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      // Scale down while preserving aspect ratio if either dimension exceeds maxPx.
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        const scale = maxPx / Math.max(width, height);
+        width  = Math.round(width  * scale);
+        height = Math.round(height * scale);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width  = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(blob => {
+        if (!blob || blob.size >= file.size) {
+          resolve(file);   // compression made it bigger — keep the original
+          return;
+        }
+        // Rename to .jpg since canvas always outputs JPEG here.
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+      }, 'image/jpeg', quality);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);   // can't decode (e.g. HEIC on non-Apple) — upload as-is
+    };
+
+    img.src = url;
+  });
 }
 
 // Formats a UTC timestamp string or ms number into a short readable date.

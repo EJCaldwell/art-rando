@@ -24,11 +24,12 @@ html {
 }
 
 body {
-  /* Oversized gradient so background-position can slide through multiple hues */
-  /* Last stop matches first so the infinite loop resets invisibly */
-  background: linear-gradient(135deg, #252558, #1a1a2e, #1c1030, #2a0a10, #1a1a2e, #252558);
+  /* Palindrome gradient (A→B→C→B→A) + alternate direction = zero loop jump.
+     The animation oscillates forward then backward so the position never resets,
+     and ease-in-out softens the direction change at each end. */
+  background: linear-gradient(135deg, #252558, #1c1030, #2a0a10, #1c1030, #252558);
   background-size: 400% 400%;
-  animation: bg-slide 32s linear infinite;
+  animation: bg-slide 20s ease-in-out infinite alternate;
   color: var(--text);
   font-family: system-ui, -apple-system, sans-serif;
   height: 100vh;
@@ -40,8 +41,8 @@ body {
 }
 
 @keyframes bg-slide {
-  0%   { background-position: 0% 50%; }
-  100% { background-position: 100% 50%; }
+  from { background-position: 0% 0%; }
+  to   { background-position: 100% 100%; }
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -820,8 +821,10 @@ main {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.55rem;
+  gap: 1rem;
   z-index: 550;
+  /* Container is transparent to touches; only the orb buttons (.btn--icon) are interactive */
+  pointer-events: none;
 }
 
 /* Each row: [label]  [icon button] — label slides in from the button side */
@@ -829,6 +832,7 @@ main {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+  pointer-events: none;
 }
 
 .corner-btn-label {
@@ -855,6 +859,10 @@ main {
   height: 4.2rem;
   padding: 0;
   border-radius: 50%;
+  /* Restore interactivity on just the button (parent has pointer-events:none).
+     clip-path then further restricts the hit area to the visible circle. */
+  pointer-events: auto;
+  clip-path: circle(50%);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border);
   color: var(--text-muted);
@@ -897,6 +905,9 @@ main {
 #settings-btn:not(:disabled):hover svg {
   animation: gear-spin 2.2s linear infinite;
 }
+
+/* Bug button emoji is smaller than the default icon font-size */
+#bug-btn { font-size: 1.6rem; }
 
 
 /* ── Settings modal ──────────────────────────────────────────────────────── */
@@ -1744,6 +1755,17 @@ body.login-page {
   border-color: var(--accent-purple);
 }
 
+/* ── Gallery / upload policy notice ──────────────────────────────────────── */
+.gallery-policy-notice {
+  font-size: 0.78rem;
+  color: #c89a3a;
+  background: rgba(200, 154, 58, 0.08);
+  border: 1px solid rgba(200, 154, 58, 0.3);
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  line-height: 1.5;
+}
+
 /* ── My Uploads — upload button row at the top ────────────────────────────── */
 .gallery-upload-row {
   display: flex;
@@ -1891,4 +1913,29 @@ body.login-page {
     font-size: 1.1rem;
     padding: 0.8rem 2.8rem;
   }
+
+  /* Move corner buttons to bottom-right so they don't crowd the top of the screen.
+     Sit above the creator-links footer (≈ 3rem tall). */
+  .corner-controls {
+    top: auto;
+    bottom: 3.5rem;
+    right: 0.75rem;
+    gap: 0.75rem;
+  }
+
+  /* Shrink the icon circles on mobile */
+  .btn--icon {
+    width: 3rem;
+    height: 3rem;
+    font-size: 1.6rem;
+  }
+
+  /* Scale the gear SVG to match the smaller circle */
+  #settings-btn svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  /* Bug emoji needs an even smaller size inside the smaller circle */
+  #bug-btn { font-size: 1.2rem; }
 }

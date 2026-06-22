@@ -10,9 +10,6 @@
 //
 //   3. Call `clearSession()` to sign the user out (async, fire-and-forget is fine).
 //
-//   4. Call `requireAuth()` at the top of protected pages to redirect to login.html
-//      if no session exists.
-//
 // Depends on: supabase.js (_sb must be defined before this script loads)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -50,14 +47,3 @@ async function clearSession() {
   await _sb.auth.signOut();
 }
 
-// Redirects to login.html if there is no active session.
-// Returns true when authenticated so callers can use it as a guard.
-//
-//   if (!requireAuth()) return;
-function requireAuth(redirectTo = 'login.html') {
-  if (!getSession()?.loggedIn) {
-    window.location.href = redirectTo;
-    return false;
-  }
-  return true;
-}

@@ -137,7 +137,7 @@ function openHelp(onDone) {
 
   const recIcon = document.createElement('span');
   recIcon.className = 'help-rec-icon';
-  recIcon.textContent = '✦';
+  recIcon.textContent = '';
 
   const recText = document.createElement('div');
   recText.className = 'help-rec-text';
@@ -158,7 +158,7 @@ function openHelp(onDone) {
   // footer button, so it's visible but doesn't overshadow the actual content.
   const schoolNote = document.createElement('p');
   schoolNote.className = 'help-school-note';
-  schoolNote.textContent = '🎓 This was made as a school project — sorry if you run into any bugs! Feel free to report them using the 🐛 button in the top-right corner. If you would like to support me please check out my Ko-fi at the bottom of the page :).';
+  schoolNote.textContent = 'This was made as a school project — sorry if you run into any bugs! Feel free to report them using the Bug button in the corner. If you would like to support me please check out my Ko-fi at the bottom of the page :).';
   body.appendChild(schoolNote);
 
   // Footer with "Let's spin!" button
@@ -194,13 +194,12 @@ function openHelp(onDone) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// openBugReport() — small modal that collects a bug description and fires off
-// a mailto: link pre-filled with the report so it lands in the developer's inbox.
+// openBugReport() — collects a bug description and saves it to the
+// bug_reports table in Supabase so it shows up in the admin panel.
+// Works for both signed-in and anonymous users.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function openBugReport() {
-  // Email address that receives bug reports — change this to your own.
-  const REPORT_EMAIL = 'ecaldwell9481@xmail.dixietech.edu';
 
   // ── Modal shell ──────────────────────────────────────────────────────────────
   const overlay = document.createElement('div');
@@ -214,7 +213,7 @@ function openBugReport() {
   header.className = 'modal-header';
 
   const title = document.createElement('h2');
-  title.textContent = '🐛 Report a Bug';
+  title.textContent = 'Report a Bug';
 
   const closeX = document.createElement('button');
   closeX.className = 'modal-close-btn';
@@ -231,21 +230,20 @@ function openBugReport() {
 
   const desc = document.createElement('p');
   desc.className   = 'help-intro';
-  desc.textContent = 'Describe what went wrong and what you expected to happen. This opens your email app with the report ready to send.';
+  desc.textContent = 'Describe what went wrong and what you expected to happen. Your report goes straight to the developer.';
 
   const textarea = document.createElement('textarea');
   textarea.className   = 'bug-report-textarea';
   textarea.placeholder = 'e.g. The wheel didn\'t stop spinning after clicking Spin…';
   textarea.rows        = 5;
 
-  // Shown after the report is prepared (mailto opens)
-  const confirmation = document.createElement('p');
-  confirmation.className = 'bug-report-confirm hidden';
-  confirmation.textContent = '✓ Your email app should have opened with the report — thanks!';
+  // Status line — hidden until the submit attempt resolves
+  const statusEl = document.createElement('p');
+  statusEl.className = 'bug-report-confirm hidden';
 
   body.appendChild(desc);
   body.appendChild(textarea);
-  body.appendChild(confirmation);
+  body.appendChild(statusEl);
 
   // Footer — Cancel + Send Report buttons
   const footer = document.createElement('div');
@@ -260,7 +258,8 @@ function openBugReport() {
   sendBtn.className     = 'btn btn--spin';
   sendBtn.style.cssText = 'font-size:1rem;padding:0.65rem 2rem;';
   sendBtn.textContent   = 'Send Report';
-  sendBtn.addEventListener('click', () => {
+
+  sendBtn.addEventListener('click', async () => {
     const report = textarea.value.trim();
 
     if (!report) {
@@ -269,19 +268,36 @@ function openBugReport() {
       return;
     }
 
-    // Build a mailto: link with a pre-filled subject and body so the user just hits Send.
-    const subject = encodeURIComponent('[art-rando] Bug Report');
-    const mailBody = encodeURIComponent(
-      `Bug description:\n${report}\n\n---\nPage: ${window.location.href}`
-    );
-
-    // Open the user's default email client with the report pre-filled.
-    window.location.href = `mailto:${REPORT_EMAIL}?subject=${subject}&body=${mailBody}`;
-
-    // Show confirmation inside the modal after the mailto fires.
-    confirmation.classList.remove('hidden');
     sendBtn.disabled    = true;
+    sendBtn.textContent = 'Sending…';
+    statusEl.classList.add('hidden');
+    textarea.style.borderColor = '';
+
+    // Attach user info if logged in; anonymous reports are also accepted.
+    const session = getSession();
+    const { error } = await _sb.from('bug_reports').insert({
+      description: report,
+      page_url:    window.location.href,
+      user_id:     session?.userId || null,
+      username:    session?.user   || null,
+    });
+
+    if (error) {
+      // Show the error inline so the user can try again.
+      statusEl.textContent = 'Could not send — please try again.';
+      statusEl.style.color = 'var(--accent)';
+      statusEl.classList.remove('hidden');
+      sendBtn.disabled    = false;
+      sendBtn.textContent = 'Send Report';
+      return;
+    }
+
+    // Success — confirm and close after a brief pause.
+    statusEl.textContent = 'Report sent — thanks!';
+    statusEl.style.color = 'var(--accent-teal)';
+    statusEl.classList.remove('hidden');
     sendBtn.textContent = 'Sent!';
+    setTimeout(() => close(), 1600);
   });
 
   footer.appendChild(cancelBtn);
