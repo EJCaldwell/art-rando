@@ -2,12 +2,11 @@
 //
 // Two forms live on login.html, toggled by the tab buttons:
 //   • Sign In  — username + password.
-//   • Register — username + password + optional email.
+//   • Register — username + password.
 //
 // Supabase Auth requires an email address internally.  We generate a fixed
 // internal email from the username (username@art-rando.local) that is never
-// shown to the user.  If the user provides a real email it is stored in
-// user_metadata as contact_email for future account-recovery use.
+// shown to the user.
 //
 // NOTE: Email confirmation must be disabled in the Supabase dashboard
 // (Authentication → Settings → uncheck "Enable email confirmations") because
@@ -102,9 +101,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   registerForm.addEventListener('submit', async e => {
     e.preventDefault();
 
-    const username     = registerForm.elements.username.value.trim();
-    const contactEmail = registerForm.elements.email.value.trim();
-    const password     = registerForm.elements.password.value;
+    const username = registerForm.elements.username.value.trim();
+    const password = registerForm.elements.password.value;
 
     if (!username || !password) {
       showError(registerError, 'Please fill in your username and password.');
@@ -116,10 +114,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       showError(registerError, 'Username can only contain letters, numbers, and underscores.');
-      return;
-    }
-    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
-      showError(registerError, 'Please enter a valid email address or leave it blank.');
       return;
     }
 
@@ -146,7 +140,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Build metadata — full_name is what the Supabase dashboard shows as display name.
     const metadata = { username, full_name: username };
-    if (contactEmail) metadata.contact_email = contactEmail;
 
     const { data, error } = await _sb.auth.signUp({
       email:    internalEmail(username),
