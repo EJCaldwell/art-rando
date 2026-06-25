@@ -544,7 +544,7 @@ function openGalleryUploadModal(onSuccess) {
   // Load the last spin result saved by app.js when the results sheet opened.
   let lastSpin = {};
   try {
-    lastSpin = JSON.parse(getCookie('art_rando_last_spin')) || {};
+    lastSpin = JSON.parse(localStorage.getItem('art_rando_last_spin')) || {};
   } catch (_) {}
 
   // ── Build the modal ────────────────────────────────────────────────────────

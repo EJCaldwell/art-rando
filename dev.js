@@ -8,8 +8,8 @@
 // regular Edit Lists modal:
 //   • Spin speed slider
 //   • Instant-spin toggle (nearly-zero duration for fast testing)
-//   • Clear saved preferences cookie
-//   • Copy raw cookie data to clipboard
+//   • Clear saved preferences
+//   • Copy raw preferences data to clipboard
 // ─────────────────────────────────────────────────────────────────────────────
 
 (function () {
@@ -205,25 +205,22 @@
       // ── Clear preferences ────────────────────────────────────────────────
       const clearBtn = document.createElement('button');
       clearBtn.className   = 'dev-btn';
-      clearBtn.textContent = 'clear preferences cookie';
+      clearBtn.textContent = 'clear preferences';
       clearBtn.addEventListener('click', () => {
-        if (!confirm('Delete the saved preferences cookie? The page will reload with defaults.')) return;
-        // Expire the cookie by setting a past date, then reload.
-        document.cookie = 'art_rando_prefs=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;';
+        if (!confirm('Delete saved preferences? The page will reload with defaults.')) return;
+        localStorage.removeItem('art_rando_prefs');
         location.reload();
       });
 
-      // ── Copy raw cookie data ─────────────────────────────────────────────
+      // ── Copy raw preferences data ────────────────────────────────────────
       const copyBtn = document.createElement('button');
       copyBtn.className   = 'dev-btn';
-      copyBtn.textContent = 'copy cookie json';
+      copyBtn.textContent = 'copy preferences json';
       copyBtn.addEventListener('click', () => {
-        // Read the raw cookie string directly.
-        const match = document.cookie.match(/(?:^|;\s*)art_rando_prefs=([^;]*)/);
-        const json  = match ? decodeURIComponent(match[1]) : '(no cookie set)';
+        const json = localStorage.getItem('art_rando_prefs') || '(no preferences saved)';
         navigator.clipboard.writeText(json).then(() => {
           copyBtn.textContent = 'copied';
-          setTimeout(() => { copyBtn.textContent = 'copy cookie json'; }, 2000);
+          setTimeout(() => { copyBtn.textContent = 'copy preferences json'; }, 2000);
         }).catch(() => {
           // Clipboard API may be blocked — fall back to showing the data.
           prompt('Copy the JSON below:', json);

@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// editor.js — cookie-backed data layer + Edit Lists modal UI.
+// editor.js — localStorage-backed data layer + Edit Lists modal UI.
 //
 // Exports (as globals, loaded before app.js):
-//   loadData()          → returns the active data object (cookie or ART_DATA)
-//   saveData(data)      → writes the data object to the cookie
+//   loadData()          → returns the active data object (localStorage or ART_DATA)
+//   saveData(data)      → writes the data object to localStorage
 //   openEditor(onDone)  → opens the modal; calls onDone() when it closes
 //
 // Data shape expected by the rest of the app:
@@ -12,31 +12,39 @@
 //   data[category].subjects— string[] of subjects for that category
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Cookie helpers ────────────────────────────────────────────────────────────
-
-// Writes a cookie that expires `days` days from now.
-function _setCookie(name, value, days) {
-  const d = new Date();
-  d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
-  document.cookie = name + '=' + encodeURIComponent(value) +
-    ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
-}
-
-// Returns the decoded value of a named cookie, or null if absent.
-function _getCookie(name) {
-  const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
-  return m ? decodeURIComponent(m[1]) : null;
-}
+// ── One-time cookie migration ─────────────────────────────────────────────────
+// Runs immediately on script load. If old cookies exist from before the
+// localStorage migration, copy their data into localStorage then expire them.
+(function migrateCookies() {
+  const PAST = 'Thu, 01 Jan 1970 00:00:00 UTC';
+  // Migrate art_rando_prefs cookie → localStorage
+  const prefsMatch = document.cookie.match(/(?:^|;\s*)art_rando_prefs=([^;]*)/);
+  if (prefsMatch) {
+    if (!localStorage.getItem('art_rando_prefs')) {
+      // Preserve existing preferences rather than overwriting localStorage.
+      localStorage.setItem('art_rando_prefs', decodeURIComponent(prefsMatch[1]));
+    }
+    document.cookie = 'art_rando_prefs=;expires=' + PAST + ';path=/;';
+  }
+  // Migrate art_rando_last_spin cookie → localStorage
+  const spinMatch = document.cookie.match(/(?:^|;\s*)art_rando_last_spin=([^;]*)/);
+  if (spinMatch) {
+    if (!localStorage.getItem('art_rando_last_spin')) {
+      localStorage.setItem('art_rando_last_spin', decodeURIComponent(spinMatch[1]));
+    }
+    document.cookie = 'art_rando_last_spin=;expires=' + PAST + ';path=/;';
+  }
+}());
 
 // ── Public data API ───────────────────────────────────────────────────────────
 
-// Returns the active data object. Reads from the cookie first; falls back
+// Returns the active data object. Reads from localStorage first; falls back
 // to a deep copy of the hard-coded ART_DATA defaults on first visit or if
-// the cookie JSON is corrupt.
-// Also handles backward-compatibility: if an older cookie lacks _forms, we
+// the stored JSON is corrupt.
+// Also handles backward-compatibility: if an older save lacks _forms, we
 // inject the default forms list so the app never sees an undefined _forms.
 function loadData() {
-  const raw = _getCookie('art_rando_prefs');
+  const raw = localStorage.getItem('art_rando_prefs');
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
@@ -51,9 +59,9 @@ function loadData() {
   return JSON.parse(JSON.stringify(ART_DATA));
 }
 
-// Serialises the data object and writes it to a 365-day cookie.
+// Serialises the data object and writes it to localStorage.
 function saveData(data) {
-  _setCookie('art_rando_prefs', JSON.stringify(data), 365);
+  localStorage.setItem('art_rando_prefs', JSON.stringify(data));
 }
 
 // ── Editor modal ──────────────────────────────────────────────────────────────
@@ -97,8 +105,8 @@ function openEditor(onDone) {
   resetBtn.textContent = 'Reset to Defaults';
   resetBtn.addEventListener('click', () => {
     if (!confirm('Reset all lists back to the original defaults? Your changes will be lost.')) return;
-    // Expire the cookie immediately.
-    _setCookie('art_rando_prefs', '', -1);
+    // Remove the saved preferences.
+    localStorage.removeItem('art_rando_prefs');
     // Swap the in-memory data with a fresh copy of ART_DATA so the modal
     // re-renders without a page reload.
     const fresh = JSON.parse(JSON.stringify(ART_DATA));
