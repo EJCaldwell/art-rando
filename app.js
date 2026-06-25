@@ -264,17 +264,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Populates the prompt and slides the sheet up into view.
   // The "as a [form]" phrase is hidden when state.form is null (skipped).
-  // Snapshots the spin result to localStorage so the gallery upload modal can
+  // Snapshots the spin result to a cookie so the gallery upload modal can
   // pre-fill the prompt fields even after this sheet is dismissed.
   function showSheet() {
     try {
-      localStorage.setItem('art_rando_last_spin', JSON.stringify({
+      setCookie('art_rando_last_spin', JSON.stringify({
         category: state.category,
         medium:   state.medium,
         form:     state.form,
         subject:  state.subject,
-      }));
-    } catch (_) { /* storage unavailable — silently skip */ }
+      }), 1);
+    } catch (_) { /* cookies unavailable — silently skip */ }
 
     resSubject.textContent  = state.subject  || '—';
     resMedium.textContent   = state.medium   || '';

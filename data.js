@@ -14,7 +14,7 @@
 //   3. Form      — data._forms
 //   4. Subject   — data[category].subjects
 //
-// This file is only the fallback default. User edits are saved to a cookie
+// This file is only the fallback default. User edits are saved to localStorage
 // by editor.js and loaded by loadData() instead of reading directly from here.
 // ─────────────────────────────────────────────────────────────────────────────
 

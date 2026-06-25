@@ -208,7 +208,7 @@
       clearBtn.textContent = 'clear preferences';
       clearBtn.addEventListener('click', () => {
         if (!confirm('Delete saved preferences? The page will reload with defaults.')) return;
-        localStorage.removeItem('art_rando_prefs');
+        setCookie('art_rando_prefs', '', -1);
         location.reload();
       });
 
@@ -217,7 +217,7 @@
       copyBtn.className   = 'dev-btn';
       copyBtn.textContent = 'copy preferences json';
       copyBtn.addEventListener('click', () => {
-        const json = localStorage.getItem('art_rando_prefs') || '(no preferences saved)';
+        const json = getCookie('art_rando_prefs') || '(no preferences saved)';
         navigator.clipboard.writeText(json).then(() => {
           copyBtn.textContent = 'copied';
           setTimeout(() => { copyBtn.textContent = 'copy preferences json'; }, 2000);

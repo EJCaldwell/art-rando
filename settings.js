@@ -21,7 +21,7 @@
 function openSettings(onDone) {
 
   // Read the current preferences from the cookie and fill in defaults for any
-  // keys that may be absent (e.g. on first visit or from an older cookie).
+  // keys that may be absent (e.g. on first visit).
   const initialData = loadData(); // from editor.js
   const prefs = Object.assign(
     { showCategoryWheel: true, showMediumWheel: true, showFormWheel: false, showSubjectWheel: true, spinDuration: 4000, spinMinCycles: 2 },

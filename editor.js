@@ -1,9 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// editor.js — localStorage-backed data layer + Edit Lists modal UI.
+// editor.js — cookie-backed data layer + Edit Lists modal UI.
 //
 // Exports (as globals, loaded before app.js):
-//   loadData()          → returns the active data object (localStorage or ART_DATA)
-//   saveData(data)      → writes the data object to localStorage
+//   getCookie(name)     → decoded cookie value or null
+//   setCookie(name, value, days) → writes a cookie; days < 0 expires it
+//   loadData()          → returns the active data object (cookie or ART_DATA)
+//   saveData(data)      → writes the data object to the cookie
 //   openEditor(onDone)  → opens the modal; calls onDone() when it closes
 //
 // Data shape expected by the rest of the app:
@@ -12,56 +14,50 @@
 //   data[category].subjects— string[] of subjects for that category
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── One-time cookie migration ─────────────────────────────────────────────────
-// Runs immediately on script load. If old cookies exist from before the
-// localStorage migration, copy their data into localStorage then expire them.
-(function migrateCookies() {
-  const PAST = 'Thu, 01 Jan 1970 00:00:00 UTC';
-  // Migrate art_rando_prefs cookie → localStorage
-  const prefsMatch = document.cookie.match(/(?:^|;\s*)art_rando_prefs=([^;]*)/);
-  if (prefsMatch) {
-    if (!localStorage.getItem('art_rando_prefs')) {
-      // Preserve existing preferences rather than overwriting localStorage.
-      localStorage.setItem('art_rando_prefs', decodeURIComponent(prefsMatch[1]));
-    }
-    document.cookie = 'art_rando_prefs=;expires=' + PAST + ';path=/;';
-  }
-  // Migrate art_rando_last_spin cookie → localStorage
-  const spinMatch = document.cookie.match(/(?:^|;\s*)art_rando_last_spin=([^;]*)/);
-  if (spinMatch) {
-    if (!localStorage.getItem('art_rando_last_spin')) {
-      localStorage.setItem('art_rando_last_spin', decodeURIComponent(spinMatch[1]));
-    }
-    document.cookie = 'art_rando_last_spin=;expires=' + PAST + ';path=/;';
-  }
+// ── Cookie helpers ────────────────────────────────────────────────────────────
+
+// Returns the decoded value of a named cookie, or null if absent.
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+// Writes a cookie. Pass days < 0 to expire (delete) it immediately.
+function setCookie(name, value, days) {
+  const d = new Date();
+  d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+  document.cookie = name + '=' + encodeURIComponent(value) +
+    ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+}
+
+// ── One-time cache clear ──────────────────────────────────────────────────────
+// Runs on every page load but only acts once. If the version marker is absent
+// the browser has stale cached cookies — expire them so the app starts fresh.
+// Bumping the version string here will trigger another one-time clear.
+(function clearStaleCookies() {
+  if (getCookie('art_rando_v') === '1') return;
+  setCookie('art_rando_prefs',     '', -1);
+  setCookie('art_rando_last_spin', '', -1);
+  setCookie('art_rando_v', '1', 365);
 }());
 
 // ── Public data API ───────────────────────────────────────────────────────────
 
-// Returns the active data object. Reads from localStorage first; falls back
+// Returns the active data object. Reads from the cookie first; falls back
 // to a deep copy of the hard-coded ART_DATA defaults on first visit or if
-// the stored JSON is corrupt.
-// Also handles backward-compatibility: if an older save lacks _forms, we
-// inject the default forms list so the app never sees an undefined _forms.
+// the cookie JSON is corrupt.
 function loadData() {
-  const raw = localStorage.getItem('art_rando_prefs');
+  const raw = getCookie('art_rando_prefs');
   if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      // Older saves may predate the _forms key — inject defaults if missing.
-      if (!Array.isArray(parsed._forms)) {
-        parsed._forms = JSON.parse(JSON.stringify(ART_DATA._forms || []));
-      }
-      return parsed;
-    } catch (e) {}
+    try { return JSON.parse(raw); } catch (e) {}
   }
   // Deep copy so mutations never affect the original ART_DATA constant.
   return JSON.parse(JSON.stringify(ART_DATA));
 }
 
-// Serialises the data object and writes it to localStorage.
+// Serialises the data object and writes it to a 365-day cookie.
 function saveData(data) {
-  localStorage.setItem('art_rando_prefs', JSON.stringify(data));
+  setCookie('art_rando_prefs', JSON.stringify(data), 365);
 }
 
 // ── Editor modal ──────────────────────────────────────────────────────────────
@@ -105,8 +101,8 @@ function openEditor(onDone) {
   resetBtn.textContent = 'Reset to Defaults';
   resetBtn.addEventListener('click', () => {
     if (!confirm('Reset all lists back to the original defaults? Your changes will be lost.')) return;
-    // Remove the saved preferences.
-    localStorage.removeItem('art_rando_prefs');
+    // Expire the cookie immediately.
+    setCookie('art_rando_prefs', '', -1);
     // Swap the in-memory data with a fresh copy of ART_DATA so the modal
     // re-renders without a page reload.
     const fresh = JSON.parse(JSON.stringify(ART_DATA));
