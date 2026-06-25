@@ -1,6 +1,6 @@
 // moderate-image — auto-moderates new gallery submissions using Claude Haiku vision.
 // Called by a pg_net database trigger on gallery_posts INSERT.
-// Sets status to 'approved' or 'rejected'; leaves 'pending' on error for manual review.
+// Sets status to 'approved' or 'rejected' with reason; leaves 'pending' on error for manual review.
 
 import Anthropic from 'npm:@anthropic-ai/sdk';
 
@@ -29,10 +29,11 @@ Deno.serve(async (req: Request) => {
     const base64 = arrayBufferToBase64(await imgRes.arrayBuffer());
 
     // Ask Claude Haiku whether the image contains inappropriate content.
+    // If yes, include a brief reason so admins can see why it was rejected.
     const client  = new Anthropic({ apiKey: anthropicKey });
     const message = await client.messages.create({
       model:      'claude-haiku-4-5-20251001',
-      max_tokens: 16,
+      max_tokens: 40,
       messages: [{
         role: 'user',
         content: [
@@ -42,17 +43,20 @@ Deno.serve(async (req: Request) => {
           },
           {
             type: 'text',
-            text: 'Does this image contain nudity, sexual content, graphic violence, gore, or hate symbols? Reply with only "yes" or "no".',
+            text: 'Does this image contain nudity, sexual content, graphic violence, gore, or hate symbols? If yes, reply with "yes: " followed by a brief reason (e.g. "yes: nudity", "yes: graphic violence", "yes: hate symbols"). If no, reply with only "no".',
           },
         ],
       }],
     });
 
-    const answer        = message.content[0].type === 'text'
-      ? message.content[0].text.trim().toLowerCase()
+    const answer          = message.content[0].type === 'text'
+      ? message.content[0].text.trim()
       : 'no';
-    const inappropriate = answer.startsWith('yes');
-    const newStatus     = inappropriate ? 'rejected' : 'approved';
+    const inappropriate   = answer.toLowerCase().startsWith('yes');
+    const newStatus       = inappropriate ? 'rejected' : 'approved';
+    const rejectionReason = inappropriate
+      ? (answer.replace(/^yes:\s*/i, '').trim() || 'inappropriate content')
+      : null;
 
     // Update the post status using the service role key.
     const updateRes = await fetch(
@@ -65,14 +69,18 @@ Deno.serve(async (req: Request) => {
           'Content-Type':  'application/json',
           'Prefer':        'return=minimal',
         },
-        body: JSON.stringify({ status: newStatus, reviewed_at: new Date().toISOString() }),
+        body: JSON.stringify({
+          status:           newStatus,
+          reviewed_at:      new Date().toISOString(),
+          rejection_reason: rejectionReason,
+        }),
       },
     );
 
     if (!updateRes.ok) throw new Error(`Status update failed: ${updateRes.status}`);
 
-    console.log(`Post ${postId}: ${newStatus}`);
-    return new Response(JSON.stringify({ postId, status: newStatus }), {
+    console.log(`Post ${postId}: ${newStatus}${rejectionReason ? ` (${rejectionReason})` : ''}`);
+    return new Response(JSON.stringify({ postId, status: newStatus, rejectionReason }), {
       headers: { 'Content-Type': 'application/json' },
     });
 

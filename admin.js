@@ -1,4 +1,4 @@
-// admin.js — moderation panel for reviewing pending gallery submissions.
+// admin.js — moderation panel for reviewing gallery submissions.
 //
 // Access:
 //   Only users whose row in public.profiles has is_admin = true can use this
@@ -6,9 +6,9 @@
 //   Table Editor → profiles, find your user row, and set is_admin = true.
 //
 // Workflow:
-//   Pending posts load in chronological order (oldest first) so the queue
-//   drains from the front.  Approve or Reject each post; the card fades out
-//   and the status is written to gallery_posts.reviewed_at + status.
+//   All posts are shown newest-first with a status badge (pending / approved /
+//   rejected).  Pending posts have Approve and Reject buttons.  Rejected posts
+//   show the reason returned by the auto-moderator.
 //
 // Depends on: supabase.js (_sb), auth.js (initAuth, getSession)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   tabQueue.addEventListener('click', () => {
     tabQueue.classList.add('gallery-tab--active');
     tabBugs.classList.remove('gallery-tab--active');
-    loadPending();
+    loadAll();
   });
 
   tabBugs.addEventListener('click', () => {
@@ -60,17 +60,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     await runCleanse();
   });
 
-  // ── Load pending posts ─────────────────────────────────────────────────────
-  loadPending();
+  // ── Load all posts ─────────────────────────────────────────────────────────
+  loadAll();
 
-  async function loadPending() {
-    content.innerHTML = '<p class="gallery-loading">Loading pending posts…</p>';
+  async function loadAll() {
+    content.innerHTML = '<p class="gallery-loading">Loading posts…</p>';
 
     const { data: posts, error } = await _sb
       .from('gallery_posts')
       .select('*')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });   // oldest first so the queue drains in order
+      .order('created_at', { ascending: false });  // newest first
 
     if (error) {
       content.innerHTML = '<p class="gallery-error">Failed to load posts.</p>';
@@ -78,23 +77,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (!posts || posts.length === 0) {
-      content.innerHTML = '<p class="gallery-loading" style="text-align:center;padding:4rem 0">Queue is empty — no posts pending review.</p>';
+      content.innerHTML = '<p class="gallery-loading" style="text-align:center;padding:4rem 0">No posts yet.</p>';
       return;
     }
 
-    // Summary line above the grid.
+    const pending  = posts.filter(p => p.status === 'pending').length;
+    const approved = posts.filter(p => p.status === 'approved').length;
+    const rejected = posts.filter(p => p.status === 'rejected').length;
+
     const summary = document.createElement('p');
-    summary.className   = 'gallery-img-meta';
+    summary.className        = 'gallery-img-meta';
     summary.style.marginBottom = '1rem';
-    summary.textContent = `${posts.length} post${posts.length !== 1 ? 's' : ''} pending review`;
+    summary.textContent = `${posts.length} total — ${pending} pending · ${approved} approved · ${rejected} rejected`;
 
     const grid = document.createElement('div');
     grid.className = 'gallery-img-grid';
 
-    posts.forEach(post => {
-      const card = buildCard(post);
-      grid.appendChild(card);
-    });
+    posts.forEach(post => grid.appendChild(buildCard(post)));
 
     content.innerHTML = '';
     content.appendChild(summary);
@@ -118,6 +117,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const caption = document.createElement('div');
     caption.className = 'gallery-img-caption';
 
+    // Status badge.
+    const badge = document.createElement('span');
+    badge.textContent = post.status;
+    badge.style.cssText = [
+      'display:inline-block',
+      'font-size:0.7rem',
+      'font-weight:600',
+      'letter-spacing:0.05em',
+      'text-transform:uppercase',
+      'padding:0.2rem 0.55rem',
+      'border-radius:999px',
+      'margin-bottom:0.4rem',
+      post.status === 'approved' ? 'background:rgba(52,211,153,0.15);color:#34d399;'
+        : post.status === 'rejected' ? 'background:rgba(248,113,113,0.15);color:#f87171;'
+        : 'background:rgba(251,191,36,0.15);color:#fbbf24;',
+    ].join(';');
+
     // Artist name and submission date.
     const meta = document.createElement('p');
     meta.className   = 'gallery-img-meta';
@@ -128,35 +144,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     promptEl.className   = 'gallery-img-prompt';
     promptEl.textContent = buildPromptText(post.prompt);
 
-    // Approve / Reject action buttons.
+    caption.appendChild(badge);
+    caption.appendChild(meta);
+    caption.appendChild(promptEl);
+
+    // Rejection reason — shown only on rejected posts.
+    if (post.status === 'rejected' && post.rejection_reason) {
+      const reason = document.createElement('p');
+      reason.style.cssText = 'font-size:0.78rem;color:#f87171;margin-top:0.25rem;';
+      reason.textContent   = 'Rejected: ' + post.rejection_reason;
+      caption.appendChild(reason);
+    }
+
+    // Action buttons — approve/reject only on pending; delete on all.
     const actions = document.createElement('div');
     actions.className = 'admin-card-actions';
 
-    const approveBtn = document.createElement('button');
-    approveBtn.textContent = 'Approve';
-    approveBtn.className   = 'btn btn--spin';
-    approveBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;';
-    approveBtn.addEventListener('click', () => setStatus(post.id, 'approved', card));
+    if (post.status === 'pending') {
+      const approveBtn = document.createElement('button');
+      approveBtn.textContent   = 'Approve';
+      approveBtn.className     = 'btn btn--spin';
+      approveBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;';
+      approveBtn.addEventListener('click', () => setStatus(post.id, 'approved', card));
 
-    const rejectBtn = document.createElement('button');
-    rejectBtn.textContent = 'Reject';
-    rejectBtn.className   = 'btn btn--close-sheet';
-    rejectBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;color:var(--accent);border-color:var(--accent);';
-    rejectBtn.addEventListener('click', () => setStatus(post.id, 'rejected', card));
+      const rejectBtn = document.createElement('button');
+      rejectBtn.textContent   = 'Reject';
+      rejectBtn.className     = 'btn btn--close-sheet';
+      rejectBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;color:var(--accent);border-color:var(--accent);';
+      rejectBtn.addEventListener('click', () => setStatus(post.id, 'rejected', card));
+
+      actions.appendChild(approveBtn);
+      actions.appendChild(rejectBtn);
+    }
+
+    if (post.status === 'rejected') {
+      const approveBtn = document.createElement('button');
+      approveBtn.textContent   = 'Approve';
+      approveBtn.className     = 'btn btn--spin';
+      approveBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;';
+      approveBtn.addEventListener('click', () => setStatus(post.id, 'approved', card));
+      actions.appendChild(approveBtn);
+    }
 
     // Delete button — permanently removes the image from Storage and the DB row.
     const deleteBtn = document.createElement('button');
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.className   = 'btn btn--edit';
+    deleteBtn.textContent   = 'Delete';
+    deleteBtn.className     = 'btn btn--edit';
     deleteBtn.style.cssText = 'font-size:0.78rem;padding:0.4rem 1rem;color:var(--text-muted);';
     deleteBtn.addEventListener('click', () => deletePost(post, card));
-
-    actions.appendChild(approveBtn);
-    actions.appendChild(rejectBtn);
     actions.appendChild(deleteBtn);
 
-    caption.appendChild(meta);
-    caption.appendChild(promptEl);
     caption.appendChild(actions);
     card.appendChild(img);
     card.appendChild(caption);
@@ -165,10 +202,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Set status (approve or reject) ────────────────────────────────────────
   // Updates the post status and reviewed_at timestamp, then fades out the card.
+  // Clears rejection_reason when manually approving so stale reasons don't linger.
   async function setStatus(postId, status, cardEl) {
+    const update = { status, reviewed_at: new Date().toISOString() };
+    if (status === 'approved') update.rejection_reason = null;
+
     const { error } = await _sb
       .from('gallery_posts')
-      .update({ status, reviewed_at: new Date().toISOString() })
+      .update(update)
       .eq('id', postId);
 
     if (error) {
@@ -344,7 +385,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     cleanseBtn.textContent = 'Run Weekly Cleanse';
 
     // Refresh whichever tab is currently active.
-    if (tabQueue.classList.contains('gallery-tab--active')) loadPending();
+    if (tabQueue.classList.contains('gallery-tab--active')) loadAll();
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

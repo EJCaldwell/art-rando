@@ -31,14 +31,14 @@ function setCookie(name, value, days) {
 }
 
 // ── One-time cache clear ──────────────────────────────────────────────────────
-// Runs on every page load but only acts once. If the version marker is absent
-// the browser has stale cached cookies — expire them so the app starts fresh.
+// Runs on every page load but only acts once. Version marker is stored in
+// localStorage (not a cookie) so it can never be wiped by this same function.
 // Bumping the version string here will trigger another one-time clear.
 (function clearStaleCookies() {
-  if (getCookie('art_rando_v') === '1') return;
+  if (localStorage.getItem('art_rando_v') === '1') return;
   setCookie('art_rando_prefs',     '', -1);
   setCookie('art_rando_last_spin', '', -1);
-  setCookie('art_rando_v', '1', 365);
+  localStorage.setItem('art_rando_v', '1');
 }());
 
 // ── Public data API ───────────────────────────────────────────────────────────
