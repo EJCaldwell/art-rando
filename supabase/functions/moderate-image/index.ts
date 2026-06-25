@@ -26,7 +26,22 @@ Deno.serve(async (req: Request) => {
     const imgRes   = await fetch(imageUrl);
     if (!imgRes.ok) throw new Error(`Image fetch failed: ${imgRes.status}`);
 
-    const base64 = arrayBufferToBase64(await imgRes.arrayBuffer());
+    const imgBuffer = await imgRes.arrayBuffer();
+    const imgBytes  = new Uint8Array(imgBuffer);
+    const mediaType = detectMediaType(imgBytes);
+
+    // If the format isn't supported by Claude (e.g. HEIC uploaded from a non-Apple
+    // device where canvas compression silently fell back to the original), leave the
+    // post pending so the admin can review it manually instead of returning an error.
+    if (!mediaType) {
+      console.log(`Post ${postId}: unsupported image format — left pending for manual review`);
+      return new Response(
+        JSON.stringify({ postId, status: 'pending', note: 'unsupported image format' }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const base64 = arrayBufferToBase64(imgBuffer);
 
     // Ask Claude Haiku whether the image contains inappropriate content.
     // If yes, include a brief reason so admins can see why it was rejected.
@@ -39,7 +54,7 @@ Deno.serve(async (req: Request) => {
         content: [
           {
             type:   'image',
-            source: { type: 'base64', media_type: 'image/jpeg', data: base64 },
+            source: { type: 'base64', media_type: mediaType, data: base64 },
           },
           {
             type: 'text',
@@ -93,6 +108,24 @@ Deno.serve(async (req: Request) => {
     });
   }
 });
+
+// Sniffs the image format from magic bytes.
+// Returns null for types Claude's API doesn't accept (HEIC, AVIF, BMP, TIFF) so
+// callers can leave the post pending for manual review instead of erroring.
+// Claude accepts: image/jpeg, image/png, image/gif, image/webp.
+function detectMediaType(bytes: Uint8Array): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' | null {
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return 'image/jpeg';
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return 'image/png';
+  // GIF: GIF87a or GIF89a
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif';
+  // WebP: RIFF container (bytes 0-3) + "WEBP" fourcc at bytes 8-11
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+      bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+  // Anything else (HEIC/HEIF, AVIF, BMP, TIFF) is not supported by Claude API.
+  return null;
+}
 
 // Converts an ArrayBuffer to a base64 string without hitting the call-stack limit
 // that spread-based approaches hit on large images.
